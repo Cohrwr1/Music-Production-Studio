@@ -1,0 +1,2170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Music Production Studio - Private Portal</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- React & Babel UMD -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- FontAwesome Icons via CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <style>
+    :root {
+      --bg-app: #F4F6FC;
+      --bg-surface: rgba(255, 255, 255, 0.92);
+      --bg-surface-subtle: #F1F5F9;
+      
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      
+      --border-color: #E2E8F0;
+      --primary: #6366F1;
+      --primary-gradient: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+      --primary-light: #EEF2FF;
+      --primary-hover: #4F46E5;
+      
+      /* Status Colors */
+      --present-bg: #ECFDF5;
+      --present-border: #A7F3D0;
+      --present-text: #047857;
+      --present-accent: #10B981;
+
+      --absent-bg: #FEF2F2;
+      --absent-border: #FECACA;
+      --absent-text: #B91C1C;
+      --absent-accent: #EF4444;
+
+      --pending-bg: #FFFBEB;
+      --pending-border: #FDE68A;
+      --pending-text: #B45309;
+
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+      --radius-full: 9999px;
+
+      --shadow-sm: 0 2px 5px rgba(0, 0, 0, 0.03);
+      --shadow-md: 0 8px 24px -4px rgba(99, 102, 241, 0.08);
+      --shadow-lg: 0 16px 32px -8px rgba(15, 23, 42, 0.12);
+      
+      --font-main: 'Plus Jakarta Sans', sans-serif;
+      --font-heading: 'Outfit', var(--font-main);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-main);
+      background: linear-gradient(135deg, #F0F4FF 0%, #F5F3FF 50%, #EEF2FF 100%);
+      background-attachment: fixed;
+      color: var(--text-main);
+      line-height: 1.5;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    h1, h2, h3, h4 { font-family: var(--font-heading); font-weight: 700; color: var(--text-main); }
+
+    button {
+      font-family: var(--font-main);
+      cursor: pointer;
+      border: none;
+      background: none;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      touch-action: manipulation;
+    }
+
+    input, select, textarea {
+      font-family: var(--font-main);
+      font-size: 0.925rem;
+    }
+
+    .app-layout { display: flex; min-height: 100vh; position: relative; }
+    
+    .sidebar {
+      width: 260px;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(16px);
+      border-right: 1px solid var(--border-color);
+      padding: 1.5rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      flex-shrink: 0;
+      z-index: 100;
+      transition: transform 0.3s ease;
+    }
+
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.8rem 1.1rem;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      font-size: 0.925rem;
+      color: var(--text-main);
+      text-align: left;
+    }
+    .nav-btn:hover { background: var(--primary-light); color: var(--primary); transform: translateX(3px); }
+    .nav-btn.active {
+      background: var(--primary-gradient);
+      color: white;
+      font-weight: 700;
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    header {
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      box-shadow: var(--shadow-sm);
+      position: sticky;
+      top: 0;
+      z-index: 90;
+    }
+
+    .mobile-bar {
+      display: none;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.75rem 1rem;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 110;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.4);
+      backdrop-filter: blur(4px);
+      z-index: 95;
+    }
+
+    .content-area {
+      padding: 1.75rem 2rem;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .card {
+      background: var(--bg-surface);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(226, 232, 240, 0.8);
+      border-radius: var(--radius-xl);
+      padding: 1.35rem 1.65rem;
+      box-shadow: var(--shadow-md);
+    }
+
+    .btn-primary {
+      background: var(--primary-gradient);
+      color: white;
+      padding: 0.65rem 1.25rem;
+      border-radius: var(--radius-md);
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4); }
+
+    .btn-secondary {
+      background: rgba(241, 245, 249, 0.9);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      padding: 0.65rem 1.25rem;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .btn-secondary:hover { background: #E2E8F0; transform: translateY(-1px); }
+
+    .btn-edit {
+      background: var(--primary-light);
+      color: var(--primary);
+      border: 1px solid #C7D2FE;
+      padding: 0.4rem 0.85rem;
+      border-radius: var(--radius-md);
+      font-weight: 700;
+      font-size: 0.825rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .btn-edit:hover { background: #E0E7FF; transform: translateY(-1px); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.3rem 0.8rem;
+      border-radius: var(--radius-full);
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+    .badge-present { background: var(--present-bg); color: var(--present-text); border: 1px solid var(--present-border); }
+    .badge-absent { background: var(--absent-bg); color: var(--absent-text); border: 1px solid var(--absent-border); }
+    .badge-pending { background: var(--pending-bg); color: var(--pending-text); border: 1px solid var(--pending-border); }
+
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5);
+      backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 1rem;
+    }
+    .modal-content {
+      background: #FFFFFF; border-radius: var(--radius-xl); width: 100%; max-width: 640px;
+      box-shadow: var(--shadow-lg); border: 1px solid var(--border-color); max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .modal-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; }
+    .modal-body { padding: 1.5rem; overflow-y: auto; }
+    .modal-footer { padding: 1rem 1.5rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 0.75rem; background: var(--bg-app); }
+
+    .table-responsive {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* --- MOBILE RESPONSIVE MEDIA QUERIES --- */
+    @media (max-width: 768px) {
+      .mobile-bar { display: flex; }
+      .sidebar-overlay.active { display: block; }
+
+      .sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        transform: translateX(-100%);
+        box-shadow: var(--shadow-lg);
+      }
+      .sidebar.open {
+        transform: translateX(0);
+      }
+
+      header {
+        display: none;
+      }
+
+      .content-area {
+        padding: 1rem;
+      }
+
+      .card {
+        padding: 1.1rem;
+        border-radius: var(--radius-lg);
+      }
+
+      .filter-bar {
+        grid-template-columns: 1fr !important;
+      }
+
+      .student-grid {
+        grid-template-columns: 1fr !important;
+      }
+
+      .modal-content {
+        max-width: 95vw;
+        max-height: 92vh;
+      }
+
+      .modal-body {
+        padding: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const MUSIC_LESSON_OPTIONS = ['Vocal Lessons', 'Piano Lessons', 'App Lessons'];
+
+    // --- TUITION PACKAGE OPTIONS ---
+    const PACKAGE_OPTIONS = [
+      { id: 'pkg_4', label: '4 Classes Package (₹6,000)', price: 6000 },
+      { id: 'pkg_12', label: '12 Classes Package (₹15,000)', price: 15000 },
+      { id: 'pkg_custom', label: 'Custom Package', price: 0 }
+    ];
+
+    const getPackageLimit = (pkgType) => {
+      const p = (pkgType || '').toLowerCase();
+      if (p.includes('12')) return 12;
+      if (p.includes('4')) return 4;
+      return 4;
+    };
+
+    const calculateAge = (dobString) => {
+      if (!dobString) return 0;
+      const today = new Date();
+      const birthDate = new Date(dobString);
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      return age > 0 ? age : 0;
+    };
+
+    const getDayNameFromDate = (dateStr) => {
+      if (!dateStr) return 'Monday';
+      const parts = dateStr.split('-');
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      return d.toLocaleDateString('en-US', { weekday: 'long' });
+    };
+
+    const generateInitialMusicStudents = () => {
+      const firstNames = ['Aarav', 'Ananya', 'Rohan', 'Priya', 'Vivaan', 'Diya', 'Aditya', 'Sanya', 'Kabir', 'Isha', 'Arjun', 'Sneha', 'Vihaan', 'Tanvi', 'Dev', 'Kavya', 'Reyansh', 'Meera', 'Krishna', 'Riya', 'Ishaan', 'Kriti', 'Shaurya', 'Aanya', 'Yash', 'Avani', 'Ayush', 'Zara', 'Dhruv', 'Pari', 'Neer', 'Bhavya', 'Atharv', 'Nisha', 'Rudra', 'Prisha', 'Manan', 'Tanya', 'Samarth', 'Anika', 'Siddharth', 'Navya', 'Harsh', 'Tara', 'Karan'];
+      const lastNames = ['Sharma', 'Verma', 'Gupta', 'Patel', 'Singh', 'Kumar', 'Mehta', 'Joshi', 'Shah', 'Nair', 'Rao', 'Chopra', 'Malhotra', 'Bhatia', 'Kapoor'];
+      
+      const sampleSchedules = [
+        'Mon & Thu',
+        'Tue & Fri',
+        'Wed & Sat',
+        'Mon & Thu',
+        'Saturday Only',
+        'Sunday Only',
+        'Tue & Fri'
+      ];
+
+      const colors = ['#6366F1', '#0284C7', '#0D9488', '#16A34A', '#D97706', '#9333EA', '#DB2777'];
+
+      return Array.from({ length: 45 }, (_, i) => {
+        const fn = firstNames[i % firstNames.length];
+        const ln = lastNames[i % lastNames.length];
+        const birthYear = 2012 - (i % 20);
+        const birthMonth = String((i % 12) + 1).padStart(2, '0');
+        const birthDay = String((i % 28) + 1).padStart(2, '0');
+        const dob = `${birthYear}-${birthMonth}-${birthDay}`;
+        const age = calculateAge(dob);
+        const is12Pkg = i % 3 === 0;
+
+        return {
+          id: `music_std_${i + 1}`,
+          name: `${fn} ${ln}`,
+          dob: dob,
+          age: age,
+          email: `${fn.toLowerCase()}.${ln.toLowerCase()}@gmail.com`,
+          phone: `+91 98${Math.floor(10000000 + Math.random() * 90000000)}`,
+          joiningDate: `2026-0${(i % 5) + 1}-10`,
+          musicClass: MUSIC_LESSON_OPTIONS[i % MUSIC_LESSON_OPTIONS.length],
+          classDays: sampleSchedules[i % sampleSchedules.length],
+          packageType: is12Pkg ? '12 Classes Package (₹15,000)' : '4 Classes Package (₹6,000)',
+          packageAmount: is12Pkg ? 15000 : 6000,
+          completedClassesCount: i % 4, // Initial class progress
+          lastClassDate: '2026-10-01',
+          feeStatus: i % 5 === 0 ? 'pending' : i % 9 === 0 ? 'overdue' : 'paid',
+          avatarColor: colors[i % colors.length]
+        };
+      });
+    };
+
+    const APPS_SCRIPT_CODE = `function doGet(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Students") || ss.getSheets()[0];
+  var data = sheet.getDataRange().getValues();
+  return ContentService.createTextOutput(JSON.stringify({ status: "success", data: data })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  try {
+    var contents = JSON.parse(e.postData.contents);
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (contents.type === "SYNC_ALL") {
+      updateSheet(ss, "Students", contents.studentsHeaders, contents.studentsData);
+      updateSheet(ss, "Attendance", contents.attendanceHeaders, contents.attendanceData);
+    }
+    return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function updateSheet(ss, sheetName, headers, rows) {
+  var sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+  sheet.clear();
+  sheet.appendRow(headers);
+  if (rows && rows.length > 0) sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+}`;
+
+    const parseCSVRows = (text) => {
+      const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+      return lines.map(line => {
+        const result = [];
+        let current = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+          } else if (char === '\t' && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        result.push(current.trim());
+        return result;
+      });
+    };
+
+    // --- MAIN APP COMPONENT ---
+    function App() {
+      // Security Dual-Passcode Lock System (Owner vs User)
+      const [ownerPasscode, setOwnerPasscode] = useState(() => localStorage.getItem('harmony_owner_passcode') || localStorage.getItem('harmony_master_passcode') || '2026');
+      const [userPasscode, setUserPasscode] = useState(() => localStorage.getItem('harmony_user_passcode') || '1234');
+      const [isUnlocked, setIsUnlocked] = useState(() => sessionStorage.getItem('harmony_is_unlocked') === 'true');
+      const [userRole, setUserRole] = useState(() => sessionStorage.getItem('harmony_user_role') || 'owner');
+      const [enteredPin, setEnteredPin] = useState('');
+      const [pinError, setPinError] = useState('');
+
+      // Change Passcode Form (Owner Only)
+      const [isChangePasscodeOpen, setIsChangePasscodeOpen] = useState(false);
+      const [currentOwnerPinCheck, setCurrentOwnerPinCheck] = useState('');
+      const [newOwnerPinForm, setNewOwnerPinForm] = useState('');
+      const [newUserPinForm, setNewUserPinForm] = useState('');
+      const [changePasscodeError, setChangePasscodeError] = useState('');
+
+      // Quick Class Progress Edit Modal State
+      const [studentForProgressEdit, setStudentForProgressEdit] = useState(null);
+      const [customCompletedCount, setCustomCompletedCount] = useState(0);
+      const [customLastClassDate, setCustomLastClassDate] = useState('');
+
+      const [activeTab, setActiveTab] = useState('attendance');
+      const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+      const [students, setStudents] = useState(() => {
+        const local = localStorage.getItem('harmony_music_students');
+        return local ? JSON.parse(local) : generateInitialMusicStudents();
+      });
+
+      const [attendance, setAttendance] = useState(() => {
+        const local = localStorage.getItem('harmony_music_attendance');
+        if (local) return JSON.parse(local);
+        const today = new Date().toISOString().split('T')[0];
+        const initialMap = {};
+        generateInitialMusicStudents().forEach((s, i) => { initialMap[s.id] = i % 6 === 0 ? 'absent' : 'present'; });
+        return [{ id: `${today}_All`, date: today, className: 'All', records: initialMap }];
+      });
+
+      const [sheetUrl, setSheetUrl] = useState(() => localStorage.getItem('harmony_sheet_url') || '');
+      const [isSyncing, setIsSyncing] = useState(false);
+      const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+      const [selectedLessonFilter, setSelectedLessonFilter] = useState('All');
+      const [showOnlyTodayScheduled, setShowOnlyTodayScheduled] = useState(true);
+      const [searchQuery, setSearchQuery] = useState('');
+
+      // Modal States
+      const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
+      const [isEditStudentOpen, setIsEditStudentOpen] = useState(false);
+      const [studentToEdit, setStudentToEdit] = useState(null);
+      const [isPasteDataOpen, setIsPasteDataOpen] = useState(false);
+      const [pastedText, setPastedText] = useState('');
+
+      const [formData, setFormData] = useState({
+        name: '',
+        dob: '2005-01-15',
+        age: 21,
+        email: '',
+        phone: '',
+        joiningDate: new Date().toISOString().split('T')[0],
+        musicClass: 'Vocal Lessons',
+        classDays: 'Mon & Thu',
+        packageType: '4 Classes Package (₹6,000)',
+        packageAmount: 6000,
+        completedClassesCount: 0,
+        lastClassDate: new Date().toISOString().split('T')[0],
+        feeStatus: 'paid'
+      });
+
+      useEffect(() => { localStorage.setItem('harmony_music_students', JSON.stringify(students)); }, [students]);
+      useEffect(() => { localStorage.setItem('harmony_music_attendance', JSON.stringify(attendance)); }, [attendance]);
+
+      // Role-Based Unlock Handler
+      const handleUnlockStudio = (e) => {
+        e.preventDefault();
+        const pin = enteredPin.trim();
+        if (pin === ownerPasscode) {
+          sessionStorage.setItem('harmony_is_unlocked', 'true');
+          sessionStorage.setItem('harmony_user_role', 'owner');
+          setIsUnlocked(true);
+          setUserRole('owner');
+          setEnteredPin('');
+          setPinError('');
+        } else if (pin === userPasscode) {
+          sessionStorage.setItem('harmony_is_unlocked', 'true');
+          sessionStorage.setItem('harmony_user_role', 'user');
+          setIsUnlocked(true);
+          setUserRole('user');
+          setEnteredPin('');
+          setPinError('');
+        } else {
+          setPinError('❌ Incorrect Passcode. Please try again!');
+        }
+      };
+
+      const handleLockStudio = () => {
+        sessionStorage.removeItem('harmony_is_unlocked');
+        sessionStorage.removeItem('harmony_user_role');
+        setIsUnlocked(false);
+        setUserRole(null);
+        setIsMobileMenuOpen(false);
+      };
+
+      // Owner-Only Dual Passcode Change Handler
+      const handleChangePasscode = (e) => {
+        e.preventDefault();
+        if (userRole !== 'owner') {
+          setChangePasscodeError('🔒 Permission Denied: User Mode cannot modify passcodes or permissions.');
+          return;
+        }
+        if (currentOwnerPinCheck.trim() !== ownerPasscode) {
+          setChangePasscodeError('🔒 Incorrect Current Owner Passcode! Only the studio owner who knows the current owner passcode can update security settings.');
+          return;
+        }
+        if (!newOwnerPinForm.trim()) {
+          setChangePasscodeError('❌ Owner passcode cannot be empty.');
+          return;
+        }
+        if (!newUserPinForm.trim()) {
+          setChangePasscodeError('❌ User passcode cannot be empty.');
+          return;
+        }
+
+        localStorage.setItem('harmony_owner_passcode', newOwnerPinForm.trim());
+        localStorage.setItem('harmony_user_passcode', newUserPinForm.trim());
+        setOwnerPasscode(newOwnerPinForm.trim());
+        setUserPasscode(newUserPinForm.trim());
+        setIsChangePasscodeOpen(false);
+        setCurrentOwnerPinCheck('');
+        setChangePasscodeError('');
+        alert(`✅ Security Passcodes successfully updated!\n\n👑 Owner Passcode: ${newOwnerPinForm.trim()}\n👤 User Passcode: ${newUserPinForm.trim()}`);
+      };
+
+      // Payment Status & Package Renewal Handler
+      const handleSetPaymentStatus = (studentId, newStatus) => {
+        const updatedList = students.map(s => {
+          if (s.id === studentId) {
+            if (newStatus === 'paid') {
+              const limit = getPackageLimit(s.packageType);
+              alert(`✅ Payment recorded for ${s.name}! Package renewed (0 / ${limit} classes used in new package cycle).`);
+              return { 
+                ...s, 
+                feeStatus: 'paid', 
+                completedClassesCount: 0,
+                lastClassDate: new Date().toISOString().split('T')[0]
+              };
+            }
+            return { ...s, feeStatus: newStatus };
+          }
+          return s;
+        });
+        setStudents(updatedList);
+      };
+
+      // Open Quick Class Progress Edit Modal
+      const handleOpenProgressEdit = (student) => {
+        setStudentForProgressEdit(student);
+        setCustomCompletedCount(student.completedClassesCount || 0);
+        setCustomLastClassDate(student.lastClassDate || new Date().toISOString().split('T')[0]);
+      };
+
+      const handleSaveProgressEdit = (e) => {
+        e.preventDefault();
+        if (!studentForProgressEdit) return;
+
+        const limit = getPackageLimit(studentForProgressEdit.packageType);
+        const count = Math.max(0, Number(customCompletedCount) || 0);
+        const isExpired = count >= limit;
+
+        const updatedList = students.map(s => {
+          if (s.id === studentForProgressEdit.id) {
+            return {
+              ...s,
+              completedClassesCount: count,
+              lastClassDate: customLastClassDate || new Date().toISOString().split('T')[0],
+              feeStatus: isExpired ? 'pending' : s.feeStatus
+            };
+          }
+          return s;
+        });
+
+        setStudents(updatedList);
+        setStudentForProgressEdit(null);
+        alert(`✅ Updated class progress for ${studentForProgressEdit.name}: ${count}/${limit} classes completed as of ${customLastClassDate}!`);
+      };
+
+      const handleDobChange = (e, isEditing = false) => {
+        const dobVal = e.target.value;
+        const computedAge = calculateAge(dobVal);
+        if (isEditing && studentToEdit) {
+          setStudentToEdit({ ...studentToEdit, dob: dobVal, age: computedAge });
+        } else {
+          setFormData({ ...formData, dob: dobVal, age: computedAge });
+        }
+      };
+
+      const handleOpenEditStudent = (student) => {
+        setStudentToEdit({ ...student });
+        setIsEditStudentOpen(true);
+      };
+
+      const handleSaveEditedStudent = (e) => {
+        e.preventDefault();
+        if (!studentToEdit || !studentToEdit.name) return;
+        const updatedAge = calculateAge(studentToEdit.dob);
+        const limit = getPackageLimit(studentToEdit.packageType);
+        const count = Number(studentToEdit.completedClassesCount) || 0;
+        const isExpired = count >= limit;
+
+        const finalStudent = { 
+          ...studentToEdit, 
+          age: updatedAge,
+          completedClassesCount: count,
+          feeStatus: isExpired ? 'pending' : studentToEdit.feeStatus
+        };
+
+        const updatedList = students.map(s => s.id === studentToEdit.id ? finalStudent : s);
+        setStudents(updatedList);
+        setIsEditStudentOpen(false);
+        setStudentToEdit(null);
+        alert(`✅ Updated profile for ${finalStudent.name}!`);
+      };
+
+      const handleDeleteStudent = (id, name) => {
+        if (userRole !== 'owner') {
+          alert('🔒 Permission Denied: Only the Studio Owner (Admin) can delete student records.');
+          return;
+        }
+        if (confirm(`Are you sure you want to remove student ${name}?`)) {
+          setStudents(students.filter(s => s.id !== id));
+        }
+      };
+
+      const getStudentStatus = (studentId) => {
+        const rec = attendance.find(r => r.date === selectedDate);
+        return rec?.records?.[studentId] || 'unmarked';
+      };
+
+      // Automated Class-Count Expiry Logic on Attendance Marking
+      const setSingleAttendance = (studentId, status) => {
+        const recIndex = attendance.findIndex(r => r.date === selectedDate);
+        let updated = [...attendance];
+
+        const previousStatus = getStudentStatus(studentId);
+        const isNewMark = (previousStatus === 'unmarked' || !previousStatus) && (status === 'present' || status === 'absent');
+
+        if (recIndex >= 0) {
+          const rec = { ...updated[recIndex] };
+          rec.records = { ...rec.records, [studentId]: status };
+          updated[recIndex] = rec;
+        } else {
+          updated.push({ id: `${selectedDate}_All`, date: selectedDate, className: 'All', records: { [studentId]: status } });
+        }
+        setAttendance(updated);
+
+        // Auto Class Counter & Auto Status Expiry (Switching to PENDING when limit is reached)
+        if (isNewMark) {
+          const updatedStudents = students.map(s => {
+            if (s.id === studentId) {
+              const limit = getPackageLimit(s.packageType);
+              const currentCount = s.completedClassesCount || 0;
+              const newCount = currentCount + 1;
+              const isExpiredNow = newCount >= limit;
+
+              if (isExpiredNow) {
+                alert(`⚠️ ${s.name} has completed all ${limit} classes in their ${s.packageType || 'package'}! Payment status is now automatically set to PENDING for package renewal.`);
+              }
+
+              return {
+                ...s,
+                completedClassesCount: newCount,
+                lastClassDate: selectedDate,
+                feeStatus: isExpiredNow ? 'pending' : s.feeStatus
+              };
+            }
+            return s;
+          });
+          setStudents(updatedStudents);
+        }
+      };
+
+      const setBulkAttendance = (status) => {
+        const recIndex = attendance.findIndex(r => r.date === selectedDate);
+        let updated = [...attendance];
+        const newMap = recIndex >= 0 ? { ...updated[recIndex].records } : {};
+        filteredStudents.forEach(s => { newMap[s.id] = status; });
+
+        if (recIndex >= 0) {
+          updated[recIndex].records = newMap;
+        } else {
+          updated.push({ id: `${selectedDate}_All`, date: selectedDate, className: 'All', records: newMap });
+        }
+        setAttendance(updated);
+      };
+
+      const selectedDayName = getDayNameFromDate(selectedDate);
+
+      const isStudentScheduledOnDate = (student, dateStr) => {
+        const dayFull = getDayNameFromDate(dateStr).toLowerCase();
+        const dayShort = dayFull.slice(0, 3);
+        const sched = (student.classDays || '').toLowerCase();
+
+        if (!sched || sched.includes('flex') || sched.includes('all') || sched.includes('custom')) return true;
+        if (sched.includes(dayFull) || sched.includes(dayShort)) return true;
+
+        const existingStatus = getStudentStatus(student.id);
+        if (existingStatus === 'present' || existingStatus === 'absent') return true;
+
+        return false;
+      };
+
+      const processRowsIntoStudents = (rows) => {
+        if (!rows || rows.length < 2) return [];
+        const headers = rows[0].map(h => String(h).trim().toLowerCase());
+
+        const findCol = (possibleNames) => {
+          for (let name of possibleNames) {
+            const idx = headers.findIndex(h => h.includes(name));
+            if (idx !== -1) return idx;
+          }
+          return -1;
+        };
+
+        const nameCol = findCol(['name', 'student name', 'full name', 'student']);
+        const dobCol = findCol(['dob', 'date of birth', 'birth', 'birthdate']);
+        const ageCol = findCol(['age']);
+        const emailCol = findCol(['email', 'email id', 'mail']);
+        const phoneCol = findCol(['phone', 'phone number', 'contact', 'mobile']);
+        const joinCol = findCol(['joining date', 'joining', 'joined', 'date']);
+        const statusCol = findCol(['payment status', 'status', 'fee status', 'payment']);
+        const classCol = findCol(['music class', 'lesson', 'instrument', 'class', 'batch']);
+        const daysCol = findCol(['class days', 'classes per week', 'schedule', 'days', 'frequency']);
+        const pkgCol = findCol(['package', 'tuition package', 'plan', 'bundle']);
+        const countCol = findCol(['completed classes', 'classes completed', 'classes used', 'completed', 'progress']);
+        const lastDateCol = findCol(['last class date', 'class date', 'last date', 'payment date']);
+
+        const actualNameCol = nameCol !== -1 ? nameCol : 0;
+
+        const imported = [];
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row[actualNameCol] || String(row[actualNameCol]).trim() === '') continue;
+
+          const name = String(row[actualNameCol]).trim();
+          const dob = dobCol !== -1 && row[dobCol] ? String(row[dobCol]).trim() : '2005-01-01';
+          const age = ageCol !== -1 && row[ageCol] ? Number(row[ageCol]) : calculateAge(dob);
+          const email = emailCol !== -1 && row[emailCol] ? String(row[emailCol]).trim() : `${name.toLowerCase().replace(/\s+/g, '.')}@gmail.com`;
+          const phone = phoneCol !== -1 && row[phoneCol] ? String(row[phoneCol]).trim() : '+91 9800000000';
+          const joiningDate = joinCol !== -1 && row[joinCol] ? String(row[joinCol]).trim() : '2026-04-01';
+          
+          let rawClass = classCol !== -1 && row[classCol] ? String(row[classCol]).trim() : 'Vocal Lessons';
+          let musicClass = 'Vocal Lessons';
+          if (rawClass.toLowerCase().includes('piano')) musicClass = 'Piano Lessons';
+          if (rawClass.toLowerCase().includes('app') || rawClass.toLowerCase().includes('ipad')) musicClass = 'App Lessons';
+
+          let classDays = daysCol !== -1 && row[daysCol] ? String(row[daysCol]).trim() : 'Mon & Thu';
+          
+          let packageType = pkgCol !== -1 && row[pkgCol] ? String(row[pkgCol]).trim() : '4 Classes Package (₹6,000)';
+          let packageAmount = packageType.includes('12') ? 15000 : 6000;
+          let completedClassesCount = countCol !== -1 && row[countCol] ? (parseInt(row[countCol]) || 0) : 0;
+          let lastClassDate = lastDateCol !== -1 && row[lastDateCol] ? String(row[lastDateCol]).trim() : new Date().toISOString().split('T')[0];
+
+          let rawStatus = statusCol !== -1 && row[statusCol] ? String(row[statusCol]).trim().toLowerCase() : 'paid';
+          let feeStatus = 'paid';
+          if (rawStatus.includes('pend') || rawStatus.includes('due') || rawStatus.includes('unpaid')) feeStatus = 'pending';
+          if (rawStatus.includes('overdue') || rawStatus.includes('late')) feeStatus = 'overdue';
+
+          imported.push({
+            id: `music_gs_${i}_${Date.now()}`,
+            name,
+            dob,
+            age: age || 20,
+            email,
+            phone,
+            joiningDate,
+            musicClass,
+            classDays,
+            packageType,
+            packageAmount,
+            completedClassesCount,
+            lastClassDate,
+            feeStatus,
+            avatarColor: '#6366F1'
+          });
+        }
+        return imported;
+      };
+
+      const handleFetchFromGoogleSheet = async () => {
+        if (!sheetUrl.trim()) {
+          setActiveTab('sheets');
+          return;
+        }
+
+        setIsSyncing(true);
+        try {
+          let urlToFetch = sheetUrl.trim();
+          if (urlToFetch.includes('docs.google.com/spreadsheets/d/')) {
+            const match = urlToFetch.match(/\/d\/([a-zA-Z0-9-_]+)/);
+            if (match && match[1]) {
+              urlToFetch = `https://docs.google.com/spreadsheets/d/${match[1]}/gviz/tq?tqx=out:csv`;
+            }
+          }
+
+          const response = await fetch(urlToFetch, { redirect: 'follow' });
+          const textData = await response.text();
+
+          let parsedRows = [];
+          try {
+            const jsonData = JSON.parse(textData);
+            if (jsonData && jsonData.data && Array.isArray(jsonData.data)) {
+              parsedRows = jsonData.data;
+            }
+          } catch(e) {
+            parsedRows = parseCSVRows(textData);
+          }
+
+          const importedStudents = processRowsIntoStudents(parsedRows);
+
+          if (importedStudents.length > 0) {
+            setStudents(importedStudents);
+            localStorage.setItem('harmony_sheet_url', sheetUrl);
+            alert(`🎧 Loaded ${importedStudents.length} students from Google Sheet!`);
+          } else {
+            alert('Could not find student rows in the connected Google Sheet.');
+          }
+        } catch (err) {
+          alert(`⚠️ Fetch failed: ${err.message}. You can click "Paste Sheet Data" to paste directly!`);
+        } finally {
+          setIsSyncing(false);
+        }
+      };
+
+      const handleImportPastedData = () => {
+        if (!pastedText.trim()) return;
+        const rows = parseCSVRows(pastedText);
+        const imported = processRowsIntoStudents(rows);
+        if (imported.length > 0) {
+          setStudents(imported);
+          setIsPasteDataOpen(false);
+          setPastedText('');
+          alert(`🎉 Successfully imported ${imported.length} students!`);
+        } else {
+          alert('Could not parse student records. Ensure copied text includes column headers.');
+        }
+      };
+
+      const handlePushToGoogleSheet = async () => {
+        if (!sheetUrl.trim()) {
+          setActiveTab('sheets');
+          return;
+        }
+        setIsSyncing(true);
+        try {
+          const studentsHeaders = ['Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status'];
+          const studentsData = students.map(s => [s.name, s.dob, s.age, s.email, s.phone, s.joiningDate, s.musicClass, s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${s.completedClassesCount || 0}/${getPackageLimit(s.packageType)}`, s.lastClassDate || 'N/A', s.feeStatus]);
+          
+          const attendanceHeaders = ['Date', 'Student Name', 'Lesson', 'Status'];
+          const attendanceData = [];
+          attendance.forEach(rec => {
+            Object.entries(rec.records).forEach(([sId, st]) => {
+              const stObj = students.find(s => s.id === sId);
+              attendanceData.push([rec.date, stObj ? stObj.name : sId, stObj ? stObj.musicClass : '', st]);
+            });
+          });
+
+          await fetch(sheetUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ type: 'SYNC_ALL', studentsHeaders, studentsData, attendanceHeaders, attendanceData }),
+            mode: 'no-cors'
+          });
+
+          localStorage.setItem('harmony_sheet_url', sheetUrl);
+          alert('✅ Google Sheet synced successfully with all student records & class counts!');
+        } catch(err) {
+          alert('⚠️ Sync failed: ' + err.message);
+        } finally {
+          setIsSyncing(false);
+        }
+      };
+
+      const filteredStudents = students.filter(s => {
+        const matchesLesson = selectedLessonFilter === 'All' || s.musicClass === selectedLessonFilter;
+        const matchesSearch = 
+          s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.phone.includes(searchQuery) ||
+          (s.classDays && s.classDays.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (s.packageType && s.packageType.toLowerCase().includes(searchQuery.toLowerCase()));
+
+        const matchesDayOfWeek = (activeTab !== 'attendance' || !showOnlyTodayScheduled)
+          ? true
+          : isStudentScheduledOnDate(s, selectedDate);
+
+        return matchesLesson && matchesSearch && matchesDayOfWeek;
+      });
+
+      let presentCount = 0, absentCount = 0;
+      filteredStudents.forEach(s => {
+        const st = getStudentStatus(s.id);
+        if (st === 'present') presentCount++;
+        if (st === 'absent') absentCount++;
+      });
+
+      const renderPaymentButtonGroup = (student) => {
+        const status = student.feeStatus;
+        return (
+          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => handleSetPaymentStatus(student.id, 'paid')}
+              style={{
+                padding: '0.35rem 0.65rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                border: status === 'paid' ? '2px solid #10B981' : '1px solid #A7F3D0',
+                background: status === 'paid' ? '#10B981' : '#ECFDF5',
+                color: status === 'paid' ? 'white' : '#047857',
+                boxShadow: status === 'paid' ? '0 2px 6px rgba(16, 185, 129, 0.3)' : 'none'
+              }}
+              title="Record payment and reset class counter for new package"
+            >
+              ✓ PAID
+            </button>
+
+            <button
+              onClick={() => handleSetPaymentStatus(student.id, 'pending')}
+              style={{
+                padding: '0.35rem 0.65rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                border: status === 'pending' ? '2px solid #F59E0B' : '1px solid #FDE68A',
+                background: status === 'pending' ? '#F59E0B' : '#FFFBEB',
+                color: status === 'pending' ? 'white' : '#B45309',
+                boxShadow: status === 'pending' ? '0 2px 6px rgba(245, 158, 11, 0.3)' : 'none'
+              }}
+            >
+              ⏳ PENDING
+            </button>
+
+            <button
+              onClick={() => handleSetPaymentStatus(student.id, 'overdue')}
+              style={{
+                padding: '0.35rem 0.65rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                border: status === 'overdue' ? '2px solid #EF4444' : '1px solid #FECACA',
+                background: status === 'overdue' ? '#EF4444' : '#FEF2F2',
+                color: status === 'overdue' ? 'white' : '#B91C1C',
+                boxShadow: status === 'overdue' ? '0 2px 6px rgba(239, 68, 68, 0.3)' : 'none'
+              }}
+            >
+              ⚠️ OVERDUE
+            </button>
+          </div>
+        );
+      };
+
+      const renderClassProgressBar = (student) => {
+        const limit = getPackageLimit(student.packageType);
+        const count = student.completedClassesCount || 0;
+        const isCompleted = count >= limit;
+        const percentage = Math.min(100, Math.round((count / limit) * 100));
+
+        return (
+          <div style={{
+            marginTop: '0.4rem',
+            background: isCompleted ? '#FEF2F2' : 'rgba(241, 245, 249, 0.9)',
+            border: isCompleted ? '1px solid #FECACA' : '1px solid var(--border-color)',
+            padding: '0.55rem 0.75rem',
+            borderRadius: 'var(--radius-md)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.775rem', fontWeight: 700, color: isCompleted ? '#B91C1C' : 'var(--text-main)', marginBottom: '0.3rem' }}>
+              <div>
+                📊 Classes Completed: <strong style={{ color: isCompleted ? '#B91C1C' : 'var(--primary)' }}>{count} / {limit}</strong>
+                {student.lastClassDate && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500, marginLeft: 6 }}>({student.lastClassDate})</span>}
+              </div>
+              <button 
+                onClick={() => handleOpenProgressEdit(student)}
+                style={{ fontSize: '0.725rem', padding: '0.15rem 0.45rem', borderRadius: '4px', background: '#EEF2FF', color: 'var(--primary)', border: '1px solid #C7D2FE', fontWeight: 700 }}
+                title="Edit completed classes & date manually"
+              >
+                ✏️ Edit Progress
+              </button>
+            </div>
+            <div style={{ width: '100%', height: 7, background: '#E2E8F0', borderRadius: 99, overflow: 'hidden' }}>
+              <div style={{ width: `${percentage}%`, height: '100%', background: isCompleted ? '#EF4444' : 'var(--primary-gradient)', transition: 'width 0.3s ease' }} />
+            </div>
+          </div>
+        );
+      };
+
+      // --- IF STUDIO IS LOCKED: SHOW DUAL PASSCODE LOCK SCREEN ---
+      if (!isUnlocked) {
+        return (
+          <div style={{
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+            background: 'linear-gradient(135deg, #0F172A 0%, #1E1B4B 50%, #311042 100%)',
+            color: 'white'
+          }}>
+            <div className="card" style={{
+              maxWidth: '460px',
+              width: '100%',
+              background: 'rgba(255, 255, 255, 0.08)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: '24px',
+              padding: '2.5rem 2rem',
+              color: 'white',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+              textAlign: 'center'
+            }}>
+              <div style={{ width: 64, height: 64, background: 'var(--primary-gradient)', borderRadius: '20px', display: 'grid', placeItems: 'center', margin: '0 auto 1.25rem', fontSize: '2rem', boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)' }}>
+                🔒
+              </div>
+
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'white', marginBottom: '0.35rem' }}>
+                Music Production Studio
+              </h2>
+              <p style={{ fontSize: '0.85rem', color: '#94A3B8', marginBottom: '1.75rem' }}>
+                Enter Owner Passcode or User Passcode to continue
+              </p>
+
+              <form onSubmit={handleUnlockStudio} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div>
+                  <input
+                    type="password"
+                    required
+                    autoFocus
+                    placeholder="Enter Security Passcode..."
+                    value={enteredPin}
+                    onChange={(e) => { setEnteredPin(e.target.value); setPinError(''); }}
+                    style={{
+                      width: '100%',
+                      padding: '0.85rem 1rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: pinError ? '2px solid #EF4444' : '1px solid rgba(255,255,255,0.2)',
+                      background: 'rgba(15, 23, 42, 0.6)',
+                      color: 'white',
+                      textAlign: 'center',
+                      fontSize: '1.2rem',
+                      letterSpacing: '3px',
+                      outline: 'none'
+                    }}
+                  />
+                  {pinError && <p style={{ color: '#FCA5A5', fontSize: '0.8rem', marginTop: '0.5rem', fontWeight: 600 }}>{pinError}</p>}
+                </div>
+
+                <button type="submit" className="btn-primary" style={{ justifyContent: 'center', padding: '0.85rem', fontSize: '0.95rem' }}>
+                  Unlock Studio Portal <i className="fa-solid fa-arrow-right"></i>
+                </button>
+              </form>
+
+              <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid rgba(255,255,255,0.1)', fontSize: '0.775rem', color: '#94A3B8', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <div style={{ fontSize: '0.775rem', color: '#94A3B8', lineHeight: '1.6' }}>
+                  👑 <strong>Owner Access</strong>: Full Admin Control & Settings<br />
+                  👤 <strong>User Access</strong>: Attendance & Roster Only
+                </div>
+                <div style={{ fontSize: '0.725rem', color: '#64748B', marginTop: '0.25rem' }}>
+                  🔒 Secure Portal • Enter your assigned security passcode above
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="app-layout">
+          {/* Mobile Top Header Navigation */}
+          <div className="mobile-bar">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <button 
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+                style={{ fontSize: '1.4rem', color: 'var(--primary)', padding: '0.25rem 0.5rem' }}
+                aria-label="Toggle menu"
+              >
+                <i className={`fa-solid ${isMobileMenuOpen ? 'fa-xmark' : 'fa-bars'}`}></i>
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{ width: 32, height: 32, background: 'var(--primary-gradient)', borderRadius: 'var(--radius-sm)', display: 'grid', placeItems: 'center', color: 'white', fontWeight: 800, fontSize: '0.95rem' }}>
+                  🎧
+                </div>
+                <h2 style={{ fontSize: '1.05rem', fontWeight: 800 }}>Music Production</h2>
+              </div>
+            </div>
+
+            <button onClick={() => setIsAddStudentOpen(true)} className="btn-primary" style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem' }}>
+              <i className="fa-solid fa-plus"></i> Add
+            </button>
+          </div>
+
+          {/* Sidebar Backdrop Overlay on Mobile */}
+          <div 
+            className={`sidebar-overlay ${isMobileMenuOpen ? 'active' : ''}`}
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+
+          {/* Main Sidebar */}
+          <aside className={`sidebar ${isMobileMenuOpen ? 'open' : ''}`}>
+            <div style={{ padding: '0.5rem 0.5rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ width: 44, height: 44, background: 'var(--primary-gradient)', borderRadius: 'var(--radius-md)', display: 'grid', placeItems: 'center', color: 'white', fontWeight: 800, fontSize: '1.3rem', boxShadow: '0 4px 12px rgba(99, 102, 241, 0.35)' }}>
+                🎧
+              </div>
+              <div>
+                <h2 style={{ fontSize: '1.2rem', fontWeight: 800, lineHeight: '1.1', background: 'linear-gradient(135deg, #1E293B, #6366F1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                  Music Production
+                </h2>
+                <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)', fontWeight: 600 }}>Studio & Student Manager</span>
+              </div>
+            </div>
+
+            <button 
+              className={`nav-btn ${activeTab === 'attendance' ? 'active' : ''}`} 
+              onClick={() => { setActiveTab('attendance'); setIsMobileMenuOpen(false); }}
+            >
+              <span><i className="fa-solid fa-calendar-check" style={{ marginRight: 10 }}></i> Attendance Register</span>
+            </button>
+
+            <button 
+              className={`nav-btn ${activeTab === 'students' ? 'active' : ''}`} 
+              onClick={() => { setActiveTab('students'); setIsMobileMenuOpen(false); }}
+            >
+              <span><i className="fa-solid fa-sliders" style={{ marginRight: 10 }}></i> Students ({students.length})</span>
+            </button>
+
+            <button 
+              className={`nav-btn ${activeTab === 'fees' ? 'active' : ''}`} 
+              onClick={() => { setActiveTab('fees'); setIsMobileMenuOpen(false); }}
+            >
+              <span><i className="fa-solid fa-credit-card" style={{ marginRight: 10 }}></i> Fee Payment Status</span>
+            </button>
+
+            <button 
+              className={`nav-btn ${activeTab === 'sheets' ? 'active' : ''}`} 
+              onClick={() => { setActiveTab('sheets'); setIsMobileMenuOpen(false); }}
+            >
+              <span><i className="fa-solid fa-file-excel" style={{ marginRight: 10 }}></i> Google Sheets Sync</span>
+            </button>
+
+            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {userRole === 'owner' ? (
+                <button 
+                  onClick={() => {
+                    setCurrentOwnerPinCheck('');
+                    setNewOwnerPinForm(ownerPasscode);
+                    setNewUserPinForm(userPasscode);
+                    setChangePasscodeError('');
+                    setIsChangePasscodeOpen(true);
+                  }}
+                  style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '0.775rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: 'white' }}
+                >
+                  <i className="fa-solid fa-user-shield" style={{ color: 'var(--primary)' }}></i> 👑 Owner Passcode Settings
+                </button>
+              ) : (
+                <div style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-md)', border: '1px solid #E2E8F0', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: '#F8FAFC' }} title="User mode cannot alter owner settings">
+                  <i className="fa-solid fa-lock" style={{ color: '#94A3B8' }}></i> 👤 User Mode (Settings Locked)
+                </div>
+              )}
+
+              <button 
+                onClick={handleLockStudio}
+                style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-md)', border: '1px solid #FECACA', fontSize: '0.775rem', fontWeight: 700, color: '#B91C1C', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', background: '#FEF2F2' }}
+              >
+                <i className="fa-solid fa-lock"></i> Lock Studio
+              </button>
+            </div>
+          </aside>
+
+          {/* Main Content Area */}
+          <div className="main-content">
+            <header>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+                  <h1 style={{ fontSize: '1.35rem', fontWeight: 800 }}>Music Production Portal</h1>
+                  {userRole === 'owner' ? (
+                    <span className="badge" style={{ background: '#EEF2FF', color: '#4F46E5', border: '1px solid #C7D2FE', fontSize: '0.725rem' }}>
+                      <i className="fa-solid fa-crown" style={{ color: '#F59E0B' }}></i> Owner Mode
+                    </span>
+                  ) : (
+                    <span className="badge" style={{ background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0', fontSize: '0.725rem' }}>
+                      <i className="fa-solid fa-user-check" style={{ color: '#10B981' }}></i> User Mode (Restricted)
+                    </span>
+                  )}
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                  🎧 Managing {students.length} Production Students • {userRole === 'owner' ? '👑 Full Access Unlocked' : '👤 User Access Activated'}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button 
+                  onClick={handleFetchFromGoogleSheet} 
+                  disabled={isSyncing}
+                  className="btn-secondary" 
+                  style={{ fontSize: '0.825rem', background: '#EEF2FF', color: '#4F46E5', borderColor: '#C7D2FE' }}
+                >
+                  <i className="fa-solid fa-cloud-arrow-down"></i> {isSyncing ? 'Fetching...' : 'Fetch Sheet'}
+                </button>
+
+                <button 
+                  onClick={() => setIsPasteDataOpen(true)}
+                  className="btn-secondary" 
+                  style={{ fontSize: '0.825rem', background: '#FAF5FF', color: '#7E22CE', borderColor: '#E9D5FF' }}
+                >
+                  <i className="fa-solid fa-paste"></i> Paste Cells
+                </button>
+
+                <button 
+                  onClick={handlePushToGoogleSheet} 
+                  disabled={isSyncing}
+                  className="btn-secondary" 
+                  style={{ fontSize: '0.825rem', background: sheetUrl ? 'var(--present-bg)' : 'var(--pending-bg)' }}
+                >
+                  <i className="fa-solid fa-file-csv"></i> {sheetUrl ? (isSyncing ? 'Syncing...' : 'Sync Sheet') : 'Link Sheet'}
+                </button>
+
+                <button onClick={() => setIsAddStudentOpen(true)} className="btn-primary" style={{ fontSize: '0.85rem' }}>
+                  <i className="fa-solid fa-plus"></i> Add Student
+                </button>
+
+                <button onClick={handleLockStudio} className="btn-secondary" style={{ padding: '0.65rem 0.85rem', color: '#B91C1C', borderColor: '#FECACA' }} title="Lock Studio Portal">
+                  <i className="fa-solid fa-lock"></i>
+                </button>
+              </div>
+            </header>
+
+            <div className="content-area">
+              {/* --- TAB 1: ATTENDANCE REGISTER --- */}
+              {activeTab === 'attendance' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  
+                  {/* Header Card */}
+                  <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                      <div>
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Daily Attendance Register</h2>
+                        <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>
+                          Showing students scheduled for <strong>{selectedDayName}</strong>. Toggle filters to view all.
+                        </p>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.5rem', width: '100%', maxWidth: '320px' }}>
+                        <button onClick={() => setBulkAttendance('present')} className="badge badge-present" style={{ cursor: 'pointer', flex: 1, justifyContent: 'center', padding: '0.55rem' }}>
+                          <i className="fa-solid fa-check-double"></i> Mark All Present
+                        </button>
+                        <button onClick={() => setBulkAttendance('absent')} className="badge badge-absent" style={{ cursor: 'pointer', flex: 1, justifyContent: 'center', padding: '0.55rem' }}>
+                          <i className="fa-solid fa-xmark"></i> Mark All Absent
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Filter Bar */}
+                    <div className="filter-bar" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.6fr 1.3fr 1.8fr', gap: '1rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border-color)' }}>
+                      <div>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Date ({selectedDayName})</label>
+                        <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontWeight: 600 }} />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Day Roster Filter</label>
+                        <div style={{ display: 'flex', gap: '0.35rem' }}>
+                          <button
+                            onClick={() => setShowOnlyTodayScheduled(true)}
+                            style={{
+                              flex: 1,
+                              padding: '0.5rem 0.6rem',
+                              borderRadius: 'var(--radius-md)',
+                              fontSize: '0.775rem',
+                              fontWeight: 700,
+                              background: showOnlyTodayScheduled ? '#EEF2FF' : 'var(--bg-app)',
+                              color: showOnlyTodayScheduled ? 'var(--primary)' : 'var(--text-muted)',
+                              border: showOnlyTodayScheduled ? '2px solid var(--primary)' : '1px solid var(--border-color)'
+                            }}
+                          >
+                            📅 {selectedDayName} Only
+                          </button>
+                          <button
+                            onClick={() => setShowOnlyTodayScheduled(false)}
+                            style={{
+                              padding: '0.5rem 0.6rem',
+                              borderRadius: 'var(--radius-md)',
+                              fontSize: '0.775rem',
+                              fontWeight: 700,
+                              background: !showOnlyTodayScheduled ? '#EEF2FF' : 'var(--bg-app)',
+                              color: !showOnlyTodayScheduled ? 'var(--primary)' : 'var(--text-muted)',
+                              border: !showOnlyTodayScheduled ? '2px solid var(--primary)' : '1px solid var(--border-color)'
+                            }}
+                          >
+                            👥 All ({students.length})
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Lesson Filter</label>
+                        <select value={selectedLessonFilter} onChange={(e) => setSelectedLessonFilter(e.target.value)} style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                          <option value="All">All Lessons</option>
+                          {MUSIC_LESSON_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Search Student</label>
+                        <input type="text" placeholder="Search name or phone..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Summary Bar */}
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span className="badge badge-present" style={{ fontSize: '0.85rem' }}>✓ {presentCount} Present</span>
+                    <span className="badge badge-absent" style={{ fontSize: '0.85rem' }}>✗ {absentCount} Absent</span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: 600 }}>
+                      Showing {filteredStudents.length} Students {showOnlyTodayScheduled ? `scheduled for ${selectedDayName}` : 'in total'}
+                    </span>
+                  </div>
+
+                  {/* ATTENDANCE CARDS */}
+                  <div className="student-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: '1rem' }}>
+                    {filteredStudents.length === 0 ? (
+                      <div className="card" style={{ gridColumn: '1 / -1', padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        <i className="fa-solid fa-calendar-day" style={{ fontSize: '2rem', marginBottom: '0.75rem', color: 'var(--primary)' }}></i>
+                        <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>No students scheduled for {selectedDayName}</h3>
+                        <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                          Click <strong>"👥 All ({students.length})"</strong> above to view all students.
+                        </p>
+                      </div>
+                    ) : (
+                      filteredStudents.map(student => {
+                        const st = getStudentStatus(student.id);
+                        const isPresent = st === 'present';
+                        const isAbsent = st === 'absent';
+
+                        return (
+                          <div key={student.id} className="card" style={{
+                            borderLeft: isPresent ? '5px solid #10B981' : isAbsent ? '5px solid #EF4444' : '1px solid var(--border-color)',
+                            background: isPresent ? 'rgba(240, 253, 244, 0.85)' : isAbsent ? 'rgba(254, 242, 242, 0.85)' : 'rgba(255, 255, 255, 0.95)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            gap: '1rem'
+                          }}>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: student.avatarColor || 'var(--primary-gradient)', color: 'white', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: '1.05rem', boxShadow: '0 3px 10px rgba(0,0,0,0.1)' }}>
+                                    {student.name.charAt(0)}
+                                  </div>
+                                  <div>
+                                    <h4 style={{ fontSize: '1.05rem', fontWeight: 800 }}>{student.name}</h4>
+                                    <div style={{ fontSize: '0.775rem', color: 'var(--text-muted)' }}>
+                                      <strong style={{ color: 'var(--primary)' }}>{student.musicClass}</strong> • Age: {student.age} yrs
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <button 
+                                  onClick={() => handleOpenEditStudent(student)}
+                                  className="btn-edit"
+                                >
+                                  <i className="fa-solid fa-pen-to-square"></i> Edit
+                                </button>
+                              </div>
+
+                              <div style={{ background: 'rgba(248, 250, 252, 0.8)', padding: '0.65rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '0.775rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.2rem' }}>
+                                  <span>🗓️ Schedule: <strong style={{ color: 'var(--text-main)' }}>{student.classDays || 'Mon & Thu'}</strong></span>
+                                  <span style={{ fontWeight: 700, color: '#7E22CE' }}>📦 {student.packageType || '4 Classes Package (₹6,000)'}</span>
+                                </div>
+                                <div>📞 {student.phone} | ✉️ {student.email}</div>
+                                
+                                {renderClassProgressBar(student)}
+
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.15rem' }}>
+                                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-main)' }}>Payment:</span>
+                                  {renderPaymentButtonGroup(student)}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* PRESENT / ABSENT BUTTONS */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                              <button
+                                onClick={() => setSingleAttendance(student.id, 'present')}
+                                style={{
+                                  padding: '0.7rem',
+                                  borderRadius: 'var(--radius-md)',
+                                  fontWeight: 800,
+                                  fontSize: '0.85rem',
+                                  border: isPresent ? '2px solid #10B981' : '1px solid var(--present-border)',
+                                  background: isPresent ? '#10B981' : 'var(--present-bg)',
+                                  color: isPresent ? 'white' : 'var(--present-text)',
+                                  boxShadow: isPresent ? '0 3px 10px rgba(16, 185, 129, 0.3)' : 'none'
+                                }}
+                              >
+                                <i className="fa-solid fa-circle-check"></i> PRESENT
+                              </button>
+
+                              <button
+                                onClick={() => setSingleAttendance(student.id, 'absent')}
+                                style={{
+                                  padding: '0.7rem',
+                                  borderRadius: 'var(--radius-md)',
+                                  fontWeight: 800,
+                                  fontSize: '0.85rem',
+                                  border: isAbsent ? '2px solid #EF4444' : '1px solid var(--absent-border)',
+                                  background: isAbsent ? '#EF4444' : 'var(--absent-bg)',
+                                  color: isAbsent ? 'white' : 'var(--absent-text)',
+                                  boxShadow: isAbsent ? '0 3px 10px rgba(239, 68, 68, 0.3)' : 'none'
+                                }}
+                              >
+                                <i className="fa-solid fa-circle-xmark"></i> ABSENT
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* --- TAB 2: STUDENT DIRECTORY --- */}
+              {activeTab === 'students' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div>
+                      <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Music Production Student Directory</h2>
+                      <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>Managing 4 Classes (₹6,000) & 12 Classes (₹15,000) packages for {students.length} students.</p>
+                    </div>
+                    <button onClick={() => setIsAddStudentOpen(true)} className="btn-primary">
+                      <i className="fa-solid fa-user-plus"></i> Add Student
+                    </button>
+                  </div>
+
+                  <div className="student-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: '1rem' }}>
+                    {filteredStudents.map(s => (
+                      <div key={s.id} className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                              <div style={{ width: 44, height: 44, borderRadius: '50%', background: s.avatarColor || 'var(--primary-gradient)', color: 'white', display: 'grid', placeItems: 'center', fontWeight: 800 }}>
+                                {s.name.charAt(0)}
+                              </div>
+                              <div>
+                                <h4 style={{ fontSize: '1.05rem', fontWeight: 800 }}>{s.name}</h4>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 700 }}>{s.musicClass}</span>
+                              </div>
+                            </div>
+
+                            <button onClick={() => handleOpenEditStudent(s)} className="btn-edit">
+                              <i className="fa-solid fa-user-pen"></i> Edit
+                            </button>
+                          </div>
+
+                          <div style={{ background: 'rgba(248, 250, 252, 0.8)', padding: '0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '0.825rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                            <div><strong>🎵 Lesson Option:</strong> <strong style={{ color: 'var(--primary)' }}>{s.musicClass}</strong></div>
+                            <div><strong>📦 Tuition Package:</strong> <strong style={{ color: '#7E22CE' }}>{s.packageType || '4 Classes Package (₹6,000)'}</strong></div>
+                            <div><strong>🗓️ Weekly Schedule:</strong> {s.classDays || 'Mon & Thu'}</div>
+                            <div><strong>🎂 Date of Birth:</strong> {s.dob} (Age: {s.age} yrs)</div>
+                            <div><strong>✉️ Email ID:</strong> {s.email}</div>
+                            <div><strong>📞 Phone Number:</strong> {s.phone}</div>
+                            <div><strong>📅 Joining Date:</strong> {s.joiningDate}</div>
+                            
+                            {renderClassProgressBar(s)}
+
+                            <div style={{ marginTop: '0.35rem', paddingTop: '0.45rem', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Quick Payment Status Toggle:</span>
+                              {renderPaymentButtonGroup(s)}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', paddingTop: '0.4rem', borderTop: '1px solid var(--border-color)' }}>
+                          <button onClick={() => handleDeleteStudent(s.id, s.name)} style={{ color: '#EF4444', fontSize: '0.8rem', fontWeight: 600 }}>
+                            <i className="fa-solid fa-trash-can" style={{ marginRight: 4 }}></i> Delete Record
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* --- TAB 3: FEE PAYMENT STATUS --- */}
+              {activeTab === 'fees' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  <div className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
+                      <div>
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Student Payment & Package Roster</h2>
+                        <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>Overview of 4-class (₹6,000) and 12-class (₹15,000) package payment statuses.</p>
+                      </div>
+                    </div>
+
+                    <div className="table-responsive">
+                      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem', minWidth: '750px' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--bg-surface-subtle)', color: 'var(--text-muted)' }}>
+                            <th style={{ padding: '0.75rem' }}>Student Name</th>
+                            <th style={{ padding: '0.75rem' }}>Lesson Type</th>
+                            <th style={{ padding: '0.75rem' }}>Tuition Package</th>
+                            <th style={{ padding: '0.75rem' }}>Class Counter</th>
+                            <th style={{ padding: '0.75rem' }}>Last Class Date</th>
+                            <th style={{ padding: '0.75rem' }}>Payment Status Buttons</th>
+                            <th style={{ padding: '0.75rem', textAlign: 'right' }}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredStudents.map(s => {
+                            const limit = getPackageLimit(s.packageType);
+                            const count = s.completedClassesCount || 0;
+                            const isExpired = count >= limit;
+
+                            return (
+                              <tr key={s.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <td style={{ padding: '0.75rem', fontWeight: 700 }}>{s.name}</td>
+                                <td style={{ padding: '0.75rem', fontWeight: 600, color: 'var(--primary)' }}>{s.musicClass}</td>
+                                <td style={{ padding: '0.75rem', fontWeight: 700, color: '#7E22CE' }}>{s.packageType || '4 Classes Package (₹6,000)'}</td>
+                                <td style={{ padding: '0.75rem', fontWeight: 700, color: isExpired ? '#B91C1C' : 'var(--text-main)' }}>
+                                  {count} / {limit} {isExpired ? '⚠️ Due!' : ''}
+                                  <button onClick={() => handleOpenProgressEdit(s)} style={{ marginLeft: 6, fontSize: '0.7rem', color: 'var(--primary)' }} title="Edit progress">✏️</button>
+                                </td>
+                                <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{s.lastClassDate || 'N/A'}</td>
+                                <td style={{ padding: '0.75rem' }}>
+                                  {renderPaymentButtonGroup(s)}
+                                </td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                                  <button onClick={() => handleOpenEditStudent(s)} className="btn-edit">
+                                    <i className="fa-solid fa-pen-to-square"></i> Edit
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* --- TAB 4: GOOGLE SHEETS SYNC --- */}
+              {activeTab === 'sheets' && (
+                <div className="card" style={{ maxWidth: '750px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  <div>
+                    <h2 style={{ fontSize: '1.3rem', fontWeight: 800 }}>Google Sheet Database Connector</h2>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                      Syncs Vocal/Piano/App Lessons, 4-class (₹6,000) & 12-class (₹15,000) packages, class counters, last class dates, and payment status.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: '0.35rem' }}>
+                      Google Sheet URL or Apps Script URL
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="Paste https://docs.google.com/spreadsheets/d/... or Web App URL"
+                      value={sheetUrl}
+                      onChange={(e) => setSheetUrl(e.target.value)}
+                      style={{ width: '100%', padding: '0.7rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                    <button 
+                      onClick={handleFetchFromGoogleSheet} 
+                      disabled={isSyncing}
+                      className="btn-secondary"
+                      style={{ justifyContent: 'center', padding: '0.75rem', background: '#EEF2FF', color: '#4F46E5', borderColor: '#C7D2FE' }}
+                    >
+                      <i className="fa-solid fa-cloud-arrow-down"></i> 📥 Fetch Data
+                    </button>
+
+                    <button 
+                      onClick={handlePushToGoogleSheet} 
+                      disabled={isSyncing}
+                      className="btn-primary"
+                      style={{ justifyContent: 'center', padding: '0.75rem' }}
+                    >
+                      <i className="fa-solid fa-cloud-arrow-up"></i> 📤 Push App Data
+                    </button>
+                  </div>
+
+                  <div style={{ background: '#FAF5FF', border: '1px solid #E9D5FF', borderRadius: 'var(--radius-md)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div>
+                      <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#7E22CE' }}>⚡ Instant Import: Copy & Paste Sheet Cells</h4>
+                      <p style={{ fontSize: '0.8rem', color: '#6B21A8' }}>Select all cells in your Google Sheet, copy (Ctrl+C), and paste directly into the app!</p>
+                    </div>
+                    <button onClick={() => setIsPasteDataOpen(true)} className="btn-secondary" style={{ background: '#F3E8FF', color: '#7E22CE', borderColor: '#D8B4FE', width: 'fit-content' }}>
+                      Paste Cells Now
+                    </button>
+                  </div>
+
+                  <div style={{ background: 'var(--bg-app)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '0.825rem' }}>
+                    <h4 style={{ fontWeight: 700, marginBottom: '0.35rem' }}>Google Apps Script Code:</h4>
+                    <textarea readOnly value={APPS_SCRIPT_CODE} style={{ width: '100%', height: '120px', fontFamily: 'monospace', fontSize: '0.75rem', padding: '0.5rem' }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* QUICK CLASS PROGRESS EDIT MODAL */}
+          {studentForProgressEdit && (
+            <div className="modal-overlay">
+              <div className="modal-content" style={{ maxWidth: '440px' }}>
+                <div className="modal-header">
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>✏️ Edit Class Progress</h3>
+                  <button onClick={() => setStudentForProgressEdit(null)} style={{ fontSize: '1.2rem' }}>✕</button>
+                </div>
+                <form onSubmit={handleSaveProgressEdit}>
+                  <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ background: 'var(--bg-surface-subtle)', padding: '0.75rem', borderRadius: 'var(--radius-md)', fontSize: '0.85rem' }}>
+                      <strong>Student:</strong> {studentForProgressEdit.name}<br />
+                      <strong>Package:</strong> {studentForProgressEdit.packageType || '4 Classes Package (₹6,000)'} (Limit: {getPackageLimit(studentForProgressEdit.packageType)} classes)
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.3rem' }}>Classes Completed So Far *</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        required
+                        value={customCompletedCount}
+                        onChange={(e) => setCustomCompletedCount(e.target.value)}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '1.1rem', fontWeight: 800, color: 'var(--primary)' }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.3rem' }}>As of Date (Last Class / Payment Date) *</label>
+                      <input
+                        type="date"
+                        required
+                        value={customLastClassDate}
+                        onChange={(e) => setCustomLastClassDate(e.target.value)}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn-secondary" onClick={() => setStudentForProgressEdit(null)}>Cancel</button>
+                    <button type="submit" className="btn-primary">Save Class Progress</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* CHANGE PASSCODE MODAL (PROTECTED BY OWNER VERIFICATION) */}
+          {isChangePasscodeOpen && (
+            <div className="modal-overlay">
+              <div className="modal-content" style={{ maxWidth: '460px' }}>
+                <div className="modal-header">
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>👑 Owner Security Settings</h3>
+                  <button onClick={() => setIsChangePasscodeOpen(false)} style={{ fontSize: '1.2rem' }}>✕</button>
+                </div>
+                <form onSubmit={handleChangePasscode}>
+                  <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ background: '#EEF2FF', padding: '0.75rem', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', color: '#4F46E5', fontWeight: 600 }}>
+                      <i className="fa-solid fa-shield-halved" style={{ marginRight: 5 }}></i> Verify current Owner Passcode to update security passcodes for both Owner & User access.
+                    </div>
+
+                    {changePasscodeError && (
+                      <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', padding: '0.65rem', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', color: '#B91C1C', fontWeight: 700 }}>
+                        {changePasscodeError}
+                      </div>
+                    )}
+
+                    <div>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.3rem' }}>Verify Current Owner Passcode *</label>
+                      <input 
+                        type="password" 
+                        required 
+                        placeholder="Enter current owner passcode..." 
+                        value={currentOwnerPinCheck}
+                        onChange={(e) => { setCurrentOwnerPinCheck(e.target.value); setChangePasscodeError(''); }}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} 
+                      />
+                    </div>
+
+                    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.3rem', color: '#4F46E5' }}>👑 New Owner Passcode (Full Admin Access) *</label>
+                        <input 
+                          type="text" 
+                          required 
+                          placeholder="e.g. 2026" 
+                          value={newOwnerPinForm}
+                          onChange={(e) => { setNewOwnerPinForm(e.target.value); setChangePasscodeError(''); }}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid #C7D2FE', fontWeight: 700 }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.3rem', color: '#059669' }}>👤 New User Passcode (Restricted User Access) *</label>
+                        <input 
+                          type="text" 
+                          required 
+                          placeholder="e.g. 1234" 
+                          value={newUserPinForm}
+                          onChange={(e) => { setNewUserPinForm(e.target.value); setChangePasscodeError(''); }}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid #A7F3D0', fontWeight: 700 }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn-secondary" onClick={() => setIsChangePasscodeOpen(false)}>Cancel</button>
+                    <button type="submit" className="btn-primary">Save Security Settings</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* PASTE SHEET DATA MODAL */}
+          {isPasteDataOpen && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>📋 Paste Google Sheet Data</h3>
+                  <button onClick={() => setIsPasteDataOpen(false)} style={{ fontSize: '1.2rem' }}>✕</button>
+                </div>
+                <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    Copy your Google Sheet table cells (including header row) and paste below:
+                  </p>
+                  <textarea
+                    rows={8}
+                    placeholder={`Name\tDate of Birth\tEmail ID\tPhone Number\tJoining Date\tMusic Class\tWeekly Classes\tTuition Package\tCompleted Classes\tLast Class Date\tPayment Status\nAnanya Verma\t2005-04-12\tananya@gmail.com\t9876543210\t2026-04-01\tPiano Lessons\tMon & Thu\t4 Classes Package (₹6,000)\t2\t2026-10-01\tPaid`}
+                    value={pastedText}
+                    onChange={(e) => setPastedText(e.target.value)}
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontFamily: 'monospace', fontSize: '0.8rem' }}
+                  />
+                </div>
+                <div className="modal-footer">
+                  <button className="btn-secondary" onClick={() => setIsPasteDataOpen(false)}>Cancel</button>
+                  <button className="btn-primary" onClick={handleImportPastedData}>Import Students</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ADD NEW STUDENT MODAL */}
+          {isAddStudentOpen && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>🎧 Add Music Production Student</h3>
+                  <button onClick={() => setIsAddStudentOpen(false)} style={{ fontSize: '1.2rem' }}>✕</button>
+                </div>
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!formData.name) return;
+                  const computedAge = calculateAge(formData.dob);
+                  const count = Number(formData.completedClassesCount) || 0;
+                  const limit = getPackageLimit(formData.packageType);
+                  const isExpired = count >= limit;
+
+                  const newSt = {
+                    id: `music_std_${Date.now()}`,
+                    name: formData.name,
+                    dob: formData.dob,
+                    age: computedAge,
+                    email: formData.email || `${formData.name.toLowerCase().replace(/\s+/g, '.')}@gmail.com`,
+                    phone: formData.phone || '+91 9800000000',
+                    joiningDate: formData.joiningDate || new Date().toISOString().split('T')[0],
+                    musicClass: formData.musicClass || 'Vocal Lessons',
+                    classDays: formData.classDays || 'Mon & Thu',
+                    packageType: formData.packageType || '4 Classes Package (₹6,000)',
+                    packageAmount: formData.packageType.includes('12') ? 15000 : 6000,
+                    completedClassesCount: count,
+                    lastClassDate: formData.lastClassDate || new Date().toISOString().split('T')[0],
+                    feeStatus: isExpired ? 'pending' : (formData.feeStatus || 'paid'),
+                    avatarColor: '#6366F1'
+                  };
+                  setStudents([newSt, ...students]);
+                  setIsAddStudentOpen(false);
+                  setFormData({ name: '', dob: '2005-01-15', age: 21, email: '', phone: '', joiningDate: new Date().toISOString().split('T')[0], musicClass: 'Vocal Lessons', classDays: 'Mon & Thu', packageType: '4 Classes Package (₹6,000)', packageAmount: 6000, completedClassesCount: 0, lastClassDate: new Date().toISOString().split('T')[0], feeStatus: 'paid' });
+                }}>
+                  <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Student Full Name *</label>
+                      <input 
+                        type="text" 
+                        required 
+                        placeholder="e.g. Ananya Verma" 
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} 
+                      />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Date of Birth *</label>
+                        <input 
+                          type="date" 
+                          required 
+                          value={formData.dob}
+                          onChange={(e) => handleDobChange(e, false)}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} 
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Calculated Age</label>
+                        <input 
+                          type="text" 
+                          readOnly 
+                          value={`${formData.age} years old`} 
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', background: 'var(--bg-surface-subtle)', fontWeight: 700 }} 
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Email ID *</label>
+                        <input 
+                          type="email" 
+                          required 
+                          placeholder="student@gmail.com" 
+                          value={formData.email}
+                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} 
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Phone Number *</label>
+                        <input 
+                          type="text" 
+                          required 
+                          placeholder="+91 9876543210" 
+                          value={formData.phone}
+                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} 
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Lesson Option *</label>
+                        <select 
+                          value={formData.musicClass}
+                          onChange={(e) => setFormData({ ...formData, musicClass: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontWeight: 700, color: 'var(--primary)' }}
+                        >
+                          {MUSIC_LESSON_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Tuition Package *</label>
+                        <select 
+                          value={formData.packageType}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFormData({ ...formData, packageType: val, packageAmount: val.includes('12') ? 15000 : 6000 });
+                          }}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontWeight: 700, color: '#7E22CE' }}
+                        >
+                          {PACKAGE_OPTIONS.map(p => <option key={p.id} value={p.label}>{p.label}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* EXISTING / PREVIOUS CLASS HISTORY ENTRY */}
+                    <div style={{ background: '#FAF5FF', border: '1px solid #E9D5FF', padding: '0.75rem', borderRadius: 'var(--radius-md)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#7E22CE', display: 'block', marginBottom: '0.2rem' }}>Classes Completed So Far *</label>
+                        <input 
+                          type="number" 
+                          min="0"
+                          max="100"
+                          required 
+                          value={formData.completedClassesCount}
+                          onChange={(e) => setFormData({ ...formData, completedClassesCount: parseInt(e.target.value) || 0 })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid #D8B4FE', fontWeight: 800, color: '#7E22CE' }} 
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#7E22CE', display: 'block', marginBottom: '0.2rem' }}>Last Class / Payment Date *</label>
+                        <input 
+                          type="date" 
+                          required
+                          value={formData.lastClassDate}
+                          onChange={(e) => setFormData({ ...formData, lastClassDate: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid #D8B4FE' }} 
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Weekly Schedule</label>
+                        <input 
+                          type="text"
+                          required
+                          placeholder="e.g. Mon & Thu"
+                          value={formData.classDays}
+                          onChange={(e) => setFormData({ ...formData, classDays: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Joining Date</label>
+                        <input 
+                          type="date" 
+                          value={formData.joiningDate}
+                          onChange={(e) => setFormData({ ...formData, joiningDate: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }} 
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Payment Status</label>
+                        <select 
+                          value={formData.feeStatus}
+                          onChange={(e) => setFormData({ ...formData, feeStatus: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
+                        >
+                          <option value="paid">Paid</option>
+                          <option value="pending">Pending</option>
+                          <option value="overdue">Overdue</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn-secondary" onClick={() => setIsAddStudentOpen(false)}>Cancel</button>
+                    <button type="submit" className="btn-primary">Add Student</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* EDIT STUDENT MODAL */}
+          {isEditStudentOpen && studentToEdit && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>✏️ Edit Student Information</h3>
+                  <button onClick={() => setIsEditStudentOpen(false)} style={{ fontSize: '1.2rem' }}>✕</button>
+                </div>
+                <form onSubmit={handleSaveEditedStudent}>
+                  <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Student Full Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={studentToEdit.name}
+                        onChange={(e) => setStudentToEdit({ ...studentToEdit, name: e.target.value })}
+                        style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Date of Birth *</label>
+                        <input
+                          type="date"
+                          required
+                          value={studentToEdit.dob || ''}
+                          onChange={(e) => handleDobChange(e, true)}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Calculated Age</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={`${studentToEdit.age} years old`}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', background: 'var(--bg-surface-subtle)', fontWeight: 700 }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Email ID *</label>
+                        <input
+                          type="email"
+                          required
+                          value={studentToEdit.email || ''}
+                          onChange={(e) => setStudentToEdit({ ...studentToEdit, email: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Phone Number *</label>
+                        <input
+                          type="text"
+                          required
+                          value={studentToEdit.phone || ''}
+                          onChange={(e) => setStudentToEdit({ ...studentToEdit, phone: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Lesson Option *</label>
+                        <select
+                          value={studentToEdit.musicClass || 'Vocal Lessons'}
+                          onChange={(e) => setStudentToEdit({ ...studentToEdit, musicClass: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontWeight: 700, color: 'var(--primary)' }}
+                        >
+                          {MUSIC_LESSON_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Tuition Package *</label>
+                        <select
+                          value={studentToEdit.packageType || '4 Classes Package (₹6,000)'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setStudentToEdit({ ...studentToEdit, packageType: val, packageAmount: val.includes('12') ? 15000 : 6000 });
+                          }}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontWeight: 700, color: '#7E22CE' }}
+                        >
+                          {PACKAGE_OPTIONS.map(p => <option key={p.id} value={p.label}>{p.label}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* EDIT EXISTING CLASS HISTORY */}
+                    <div style={{ background: '#FAF5FF', border: '1px solid #E9D5FF', padding: '0.75rem', borderRadius: 'var(--radius-md)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#7E22CE', display: 'block', marginBottom: '0.2rem' }}>Classes Completed So Far *</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          required
+                          value={studentToEdit.completedClassesCount || 0}
+                          onChange={(e) => setStudentToEdit({ ...studentToEdit, completedClassesCount: parseInt(e.target.value) || 0 })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid #D8B4FE', fontWeight: 800, color: '#7E22CE' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#7E22CE', display: 'block', marginBottom: '0.2rem' }}>Last Class / Payment Date *</label>
+                        <input
+                          type="date"
+                          required
+                          value={studentToEdit.lastClassDate || ''}
+                          onChange={(e) => setStudentToEdit({ ...studentToEdit, lastClassDate: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid #D8B4FE' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Weekly Schedule</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Mon & Thu"
+                          value={studentToEdit.classDays || ''}
+                          onChange={(e) => setStudentToEdit({ ...studentToEdit, classDays: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Joining Date</label>
+                        <input
+                          type="date"
+                          value={studentToEdit.joiningDate || ''}
+                          onChange={(e) => setStudentToEdit({ ...studentToEdit, joiningDate: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Payment Status</label>
+                        <select
+                          value={studentToEdit.feeStatus}
+                          onChange={(e) => setStudentToEdit({ ...studentToEdit, feeStatus: e.target.value })}
+                          style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
+                        >
+                          <option value="paid">Paid</option>
+                          <option value="pending">Pending</option>
+                          <option value="overdue">Overdue</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn-secondary" onClick={() => setIsEditStudentOpen(false)}>Cancel</button>
+                    <button type="submit" className="btn-primary">Save Changes</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
