@@ -1,6 +1,6 @@
 
     const { useState, useEffect, Component } = React;
-    const DEFAULT_SHEET_URL = ''; // Embed your https://script.google.com/macros/s/.../exec Web App URL here for instant global auto-connect!
+    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzD8tSq5esdph6EtAlGM73d0csC6Ev5l_NjmhAfIlPKeTwGpJQNfI_6kun5bcDBHXPc/exec'; // Embed your https://script.google.com/macros/s/.../exec Web App URL here for instant global auto-connect!
 
     const MUSIC_LESSON_OPTIONS = ['Vocal Lessons', 'Piano Lessons', 'App Lessons'];
 
@@ -87,10 +87,17 @@
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (e && e.parameter && e.parameter.payload) {
     try {
-      var c = JSON.parse(e.parameter.payload);
-      if (c.studentsHeaders && c.studentsData) updateSheet(ss, "Students", c.studentsHeaders, c.studentsData);
-      if (c.attendanceHeaders && c.attendanceData) updateSheet(ss, "Attendance", c.attendanceHeaders, c.attendanceData);
-    } catch(err) {}
+      var contents = JSON.parse(e.parameter.payload);
+      if (contents.studentsHeaders && contents.studentsData) {
+        updateSheet(ss, "Students", contents.studentsHeaders, contents.studentsData);
+      }
+      if (contents.attendanceHeaders && contents.attendanceData) {
+        updateSheet(ss, "Attendance", contents.attendanceHeaders, contents.attendanceData);
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Sheet updated successfully!" })).setMimeType(ContentService.MimeType.JSON);
+    } catch(err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+    }
   }
   var sheet = ss.getSheetByName("Students") || ss.getSheets()[0];
   var data = sheet.getDataRange().getValues();
@@ -98,24 +105,7 @@
 }
 
 function doPost(e) {
-  try {
-    var contents = {};
-    if (e && e.parameter && e.parameter.payload) {
-      contents = JSON.parse(e.parameter.payload);
-    } else if (e && e.postData && e.postData.contents) {
-      contents = JSON.parse(e.postData.contents);
-    }
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    if (contents.studentsHeaders && contents.studentsData) {
-      updateSheet(ss, "Students", contents.studentsHeaders, contents.studentsData);
-    }
-    if (contents.attendanceHeaders && contents.attendanceData) {
-      updateSheet(ss, "Attendance", contents.attendanceHeaders, contents.attendanceData);
-    }
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Written to Google Sheet successfully!" })).setMimeType(ContentService.MimeType.JSON);
-  } catch(err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
-  }
+  return doGet(e);
 }
 
 function updateSheet(ss, sheetName, headers, rows) {
@@ -200,227 +190,60 @@ function updateSheet(ss, sheetName, headers, rows) {
         return [{ id: `${today}_All`, date: today, className: 'All', records: {} }];
       });
 
-      const [sheetUrl, setSheetUrl] = useState(() => localStorage.getItem('harmony_sheet_url') || DEFAULT_SHEET_URL || '');
-
-      // Initial startup check: auto-fetch from Google Sheet on launch so all devices see live roster
-      useEffect(() => {
-        const urlToUse = sheetUrl || localStorage.getItem('harmony_sheet_url') || DEFAULT_SHEET_URL;
-        if (urlToUse && urlToUse.trim()) {
-          handleFetchFromGoogleSheet(urlToUse, true);
-        } else {
-          const local = localStorage.getItem('harmony_music_students');
-          if (!local || JSON.parse(local).length === 0) {
-            const demo = generateInitialMusicStudents();
-            syncCentralData(demo, attendance);
+      const [sheetUrl, setSheetUrl] = useState(() => {
+        try {
+          const urlParams = new URLSearchParams(window.location.search);
+          const paramUrl = urlParams.get('sheetUrl') || urlParams.get('url');
+          if (paramUrl && paramUrl.trim()) {
+            localStorage.setItem('harmony_sheet_url', paramUrl.trim());
+            return paramUrl.trim();
           }
-        }
-      }, []);
-      const [isSyncing, setIsSyncing] = useState(false);
-      const [lastSyncTime, setLastSyncTime] = useState(0);
-      const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-      const [selectedLessonFilter, setSelectedLessonFilter] = useState('All');
-      const [showOnlyTodayScheduled, setShowOnlyTodayScheduled] = useState(true);
-      const [searchQuery, setSearchQuery] = useState('');
-
-      // Modal States
-      const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
-      const [isEditStudentOpen, setIsEditStudentOpen] = useState(false);
-      const [studentToEdit, setStudentToEdit] = useState(null);
-      const [isPasteDataOpen, setIsPasteDataOpen] = useState(false);
-      const [pastedText, setPastedText] = useState('');
-
-      const [formData, setFormData] = useState({
-        name: '',
-        dob: '2005-01-15',
-        age: 21,
-        email: '',
-        phone: '',
-        joiningDate: new Date().toISOString().split('T')[0],
-        musicClass: 'Vocal Lessons',
-        classDays: 'Mon & Thu',
-        packageType: '4 Classes Package (₹6,000)',
-        packageAmount: 6000,
-        completedClassesCount: 0,
-        lastClassDate: new Date().toISOString().split('T')[0],
-        feeStatus: 'paid'
+        } catch(e) {}
+        return localStorage.getItem('harmony_sheet_url') || DEFAULT_SHEET_URL || '';
       });
 
-      // --- CENTRAL MULTI-DEVICE SYNCHRONIZATION ENGINE ---
-      async function syncCentralData(newStudents, newAttendance = attendance, targetSheetUrl = sheetUrl) {
-        const now = Date.now();
-        setStudents(newStudents);
-        setAttendance(newAttendance);
-        setLastSyncTime(now);
-
-        localStorage.setItem('harmony_music_students', JSON.stringify(newStudents));
-        localStorage.setItem('harmony_music_attendance', JSON.stringify(newAttendance));
-        if (targetSheetUrl) localStorage.setItem('harmony_sheet_url', targetSheetUrl);
-
-        // 1. Send update to central Python server API (/api/data) if running
-        try {
-          await fetch('/api/data', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              students: newStudents,
-              attendance: newAttendance,
-              sheetUrl: targetSheetUrl,
-              updatedAt: now
-            })
-          });
-        } catch (e) {
-          // Local Python server endpoint offline
-        }
-
-        // 2. Auto-push to Google Sheet if Web App URL is connected & user is Owner
-        if (targetSheetUrl && targetSheetUrl.trim() && userRole === 'owner') {
-          autoPushToGoogleSheet(targetSheetUrl, newStudents, newAttendance);
-        }
-      }
-
-      async function autoPushToGoogleSheet(url, studs, atts) {
-        if (!url || !url.trim() || url.includes('docs.google.com/spreadsheets/d/')) {
-          return;
-        }
-        try {
-          const studentsHeaders = ['Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status'];
-          const studentsData = studs.map(s => [
-            s.name, s.dob, s.age, s.email, s.phone, s.joiningDate, s.musicClass, s.classDays || 'Mon & Thu',
-            s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000,
-            `${s.completedClassesCount || 0}/${getPackageLimit(s.packageType)}`, s.lastClassDate || 'N/A', s.feeStatus
-          ]);
-          
-          const attendanceHeaders = ['Date', 'Student Name', 'Lesson', 'Status'];
-          const attendanceData = [];
-          atts.forEach(rec => {
-            Object.entries(rec.records || {}).forEach(([sId, st]) => {
-              const stObj = studs.find(s => s.id === sId);
-              attendanceData.push([rec.date, stObj ? stObj.name : sId, stObj ? stObj.musicClass : '', st]);
-            });
-          });
-
-          const payload = {
-            type: 'SYNC_ALL',
-            studentsHeaders,
-            studentsData,
-            attendanceHeaders,
-            attendanceData
-          };
-
-          // 1. Fetch POST
-          try {
-            await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              body: JSON.stringify(payload),
-              mode: 'no-cors'
-            });
-          } catch(e) {}
-
-          // 2. Hidden Form POST (Bypasses 302 redirect payload drops in browsers guaranteed)
-          try {
-            let iframe = document.getElementById('gs_hidden_iframe');
-            if (!iframe) {
-              iframe = document.createElement('iframe');
-              iframe.id = 'gs_hidden_iframe';
-              iframe.name = 'gs_hidden_iframe';
-              iframe.style.display = 'none';
-              document.body.appendChild(iframe);
-            }
-
-            let form = document.createElement('form');
-            form.method = 'POST';
-            form.action = url;
-            form.target = 'gs_hidden_iframe';
-
-            let input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'payload';
-            input.value = JSON.stringify(payload);
-            form.appendChild(input);
-
-            document.body.appendChild(form);
-            form.submit();
-            setTimeout(() => {
-              if (form.parentNode) form.parentNode.removeChild(form);
-            }, 1000);
-          } catch(e) {}
-        } catch (err) {
-          console.log('Background Google Sheet sync:', err);
-        }
-      };
-
-      // Real-time Central Polling Loop (fetches live updates from owner server every 5 seconds)
-      useEffect(() => {
-        let is      // Real-time Central Polling Loop (fetches live updates from local server OR Google Sheet every 8s)
+      // Initial startup check: auto-fetch from Google Sheet on launch so all devices see live roster
+            // Bulletproof Continuous Google Sheet Sync Loop (Polls every 4 seconds)
       useEffect(() => {
         let isMounted = true;
 
         const checkCentralData = async () => {
-          let updatedFromLocal = false;
-          try {
-            const res = await fetch('/api/data');
-            if (res.ok) {
-              const data = await res.json();
-              if (data && data.students && Array.isArray(data.students) && data.students.length > 0) {
-                if (!lastSyncTime || (data.updatedAt && data.updatedAt > lastSyncTime)) {
-                  if (isMounted) {
-                    setStudents(data.students);
-                    if (data.attendance) setAttendance(data.attendance);
-                    if (data.sheetUrl && !sheetUrl) setSheetUrl(data.sheetUrl);
-                    if (data.updatedAt) setLastSyncTime(data.updatedAt);
-                    localStorage.setItem('harmony_music_students', JSON.stringify(data.students));
-                    if (data.attendance) localStorage.setItem('harmony_music_attendance', JSON.stringify(data.attendance));
-                    updatedFromLocal = true;
-                  }
+          const urlToUse = sheetUrl || localStorage.getItem('harmony_sheet_url') || DEFAULT_SHEET_URL;
+          if (urlToUse && urlToUse.trim()) {
+            try {
+              let urlToFetch = urlToUse.trim();
+              if (urlToFetch.includes('docs.google.com/spreadsheets/d/')) {
+                const match = urlToFetch.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                if (match && match[1]) {
+                  urlToFetch = `https://docs.google.com/spreadsheets/d/${match[1]}/gviz/tq?tqx=out:csv`;
                 }
               }
-            }
-          } catch(e) {}
 
-          // If local Python server is offline (e.g. running on GitHub Pages), auto-fetch from Google Sheet!
-          if (!updatedFromLocal) {
-            const urlToUse = sheetUrl || localStorage.getItem('harmony_sheet_url') || DEFAULT_SHEET_URL;
-            if (urlToUse && urlToUse.trim()) {
+              const response = await fetch(urlToFetch, { redirect: 'follow' });
+              const textData = await response.text();
+              let parsedRows = [];
               try {
-                let urlToFetch = urlToUse.trim();
-                if (urlToFetch.includes('docs.google.com/spreadsheets/d/')) {
-                  const match = urlToFetch.match(/\/d\/([a-zA-Z0-9-_]+)/);
-                  if (match && match[1]) {
-                    urlToFetch = `https://docs.google.com/spreadsheets/d/${match[1]}/gviz/tq?tqx=out:csv`;
-                  }
+                const jsonData = JSON.parse(textData);
+                if (jsonData && jsonData.data && Array.isArray(jsonData.data)) {
+                  parsedRows = jsonData.data;
                 }
+              } catch(e) {
+                parsedRows = parseCSVRows(textData);
+              }
 
-                const response = await fetch(urlToFetch, { redirect: 'follow' });
-                const textData = await response.text();
-                let parsedRows = [];
-                try {
-                  const jsonData = JSON.parse(textData);
-                  if (jsonData && jsonData.data && Array.isArray(jsonData.data)) {
-                    parsedRows = jsonData.data;
-                  }
-                } catch(e) {
-                  parsedRows = parseCSVRows(textData);
-                }
-
-                const importedStudents = processRowsIntoStudents(parsedRows);
-                if (importedStudents.length > 0 && isMounted) {
-                  const currStr = localStorage.getItem('harmony_music_students') || '';
-                  const newStr = JSON.stringify(importedStudents);
-                  if (currStr !== newStr) {
-                    setStudents(importedStudents);
-                    localStorage.setItem('harmony_music_students', newStr);
-                  }
-                }
-              } catch (err) {}
-            }
+              const importedStudents = processRowsIntoStudents(parsedRows);
+              if (importedStudents.length > 0 && isMounted) {
+                setStudents(importedStudents);
+                localStorage.setItem('harmony_music_students', JSON.stringify(importedStudents));
+              }
+            } catch (err) {}
           }
         };
 
         checkCentralData();
-        const timer = setInterval(checkCentralData, 8000);
+        const timer = setInterval(checkCentralData, 4000);
         return () => { isMounted = false; clearInterval(timer); };
-      }, [lastSyncTime, sheetUrl]);
+      }, [sheetUrl]);
 
 
 
@@ -890,7 +713,7 @@ function updateSheet(ss, sheetName, headers, rows) {
           if (rawStatus.includes('overdue') || rawStatus.includes('late')) feeStatus = 'overdue';
 
           imported.push({
-            id: `music_gs_${i}_${Date.now()}`,
+            id: `music_gs_${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
             name,
             dob,
             age: age || 20,
