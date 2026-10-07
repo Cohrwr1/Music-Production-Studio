@@ -480,6 +480,13 @@
 
     const APPS_SCRIPT_CODE = `function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (e && e.parameter && e.parameter.payload) {
+    try {
+      var c = JSON.parse(e.parameter.payload);
+      if (c.studentsHeaders && c.studentsData) updateSheet(ss, "Students", c.studentsHeaders, c.studentsData);
+      if (c.attendanceHeaders && c.attendanceData) updateSheet(ss, "Attendance", c.attendanceHeaders, c.attendanceData);
+    } catch(err) {}
+  }
   var sheet = ss.getSheetByName("Students") || ss.getSheets()[0];
   var data = sheet.getDataRange().getValues();
   return ContentService.createTextOutput(JSON.stringify({ status: "success", data: data })).setMimeType(ContentService.MimeType.JSON);
@@ -488,7 +495,9 @@
 function doPost(e) {
   try {
     var contents = {};
-    if (e && e.postData && e.postData.contents) {
+    if (e && e.parameter && e.parameter.payload) {
+      contents = JSON.parse(e.parameter.payload);
+    } else if (e && e.postData && e.postData.contents) {
       contents = JSON.parse(e.postData.contents);
     }
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -671,12 +680,52 @@ function updateSheet(ss, sheetName, headers, rows) {
             });
           });
 
-          await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ type: 'SYNC_ALL', studentsHeaders, studentsData, attendanceHeaders, attendanceData }),
-            mode: 'no-cors'
-          });
+          const payload = {
+            type: 'SYNC_ALL',
+            studentsHeaders,
+            studentsData,
+            attendanceHeaders,
+            attendanceData
+          };
+
+          // 1. Fetch POST
+          try {
+            await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify(payload),
+              mode: 'no-cors'
+            });
+          } catch(e) {}
+
+          // 2. Hidden Form POST (Bypasses 302 redirect payload drops in browsers guaranteed)
+          try {
+            let iframe = document.getElementById('gs_hidden_iframe');
+            if (!iframe) {
+              iframe = document.createElement('iframe');
+              iframe.id = 'gs_hidden_iframe';
+              iframe.name = 'gs_hidden_iframe';
+              iframe.style.display = 'none';
+              document.body.appendChild(iframe);
+            }
+
+            let form = document.createElement('form');
+            form.method = 'POST';
+            form.action = url;
+            form.target = 'gs_hidden_iframe';
+
+            let input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'payload';
+            input.value = JSON.stringify(payload);
+            form.appendChild(input);
+
+            document.body.appendChild(form);
+            form.submit();
+            setTimeout(() => {
+              if (form.parentNode) form.parentNode.removeChild(form);
+            }, 1000);
+          } catch(e) {}
         } catch (err) {
           console.log('Background Google Sheet sync:', err);
         }
@@ -1309,6 +1358,54 @@ function updateSheet(ss, sheetName, headers, rows) {
         }
       };
 
+      const handleCopyAllDataToClipboard = () => {
+        if (students.length === 0) {
+          alert('No student records to copy!');
+          return;
+        }
+        const headers = ['Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status'];
+        const rows = students.map(s => [
+          s.name, s.dob, s.age, s.email, s.phone, s.joiningDate, s.musicClass, s.classDays || 'Mon & Thu',
+          s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000,
+          `${s.completedClassesCount || 0}/${getPackageLimit(s.packageType)}`, s.lastClassDate || 'N/A', s.feeStatus
+        ]);
+
+        const tsvText = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
+        
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(tsvText).then(() => {
+            alert(`📋 COPIED TO CLIPBOARD!\n\nAll ${students.length} student records copied formatted for Google Sheets!\n\nNow open your Google Sheet, click cell A1, and press Ctrl+V to paste everything instantly!`);
+          }).catch(err => {
+            handleExportCSV();
+          });
+        } else {
+          handleExportCSV();
+        }
+      };
+
+      const handleExportCSV = () => {
+        const headers = ['Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status'];
+        const rows = students.map(s => [
+          s.name, s.dob, s.age, s.email, s.phone, s.joiningDate, s.musicClass, s.classDays || 'Mon & Thu',
+          s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000,
+          `${s.completedClassesCount || 0}/${getPackageLimit(s.packageType)}`, s.lastClassDate || 'N/A', s.feeStatus
+        ]);
+
+        const csvContent = [
+          headers.join(','),
+          ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `Student_Database_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+
       const filteredStudents = students.filter(s => {
         const matchesLesson = selectedLessonFilter === 'All' || s.musicClass === selectedLessonFilter;
         const matchesSearch = 
@@ -1664,6 +1761,15 @@ function updateSheet(ss, sheetName, headers, rows) {
                   style={{ fontSize: '0.825rem', background: '#FAF5FF', color: '#7E22CE', borderColor: '#E9D5FF' }}
                 >
                   <i className="fa-solid fa-paste"></i> Paste Cells
+                </button>
+
+                <button 
+                  onClick={handleCopyAllDataToClipboard}
+                  className="btn-secondary" 
+                  style={{ fontSize: '0.825rem', background: '#F0FDF4', color: '#166534', borderColor: '#BBF7D0' }}
+                  title="Copy all student data formatted for instant paste into Google Sheets (Ctrl+V)"
+                >
+                  <i className="fa-solid fa-copy"></i> Copy for Sheet
                 </button>
 
                 <button 
