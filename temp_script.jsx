@@ -352,9 +352,12 @@ function updateSheet(ss, sheetName, headers, rows) {
 
       // Real-time Central Polling Loop (fetches live updates from owner server every 5 seconds)
       useEffect(() => {
+        let is      // Real-time Central Polling Loop (fetches live updates from local server OR Google Sheet every 8s)
+      useEffect(() => {
         let isMounted = true;
 
         const checkCentralData = async () => {
+          let updatedFromLocal = false;
           try {
             const res = await fetch('/api/data');
             if (res.ok) {
@@ -368,19 +371,56 @@ function updateSheet(ss, sheetName, headers, rows) {
                     if (data.updatedAt) setLastSyncTime(data.updatedAt);
                     localStorage.setItem('harmony_music_students', JSON.stringify(data.students));
                     if (data.attendance) localStorage.setItem('harmony_music_attendance', JSON.stringify(data.attendance));
+                    updatedFromLocal = true;
                   }
                 }
               }
             }
-          } catch(e) {
-            // Local server API offline
+          } catch(e) {}
+
+          // If local Python server is offline (e.g. running on GitHub Pages), auto-fetch from Google Sheet!
+          if (!updatedFromLocal) {
+            const urlToUse = sheetUrl || localStorage.getItem('harmony_sheet_url') || DEFAULT_SHEET_URL;
+            if (urlToUse && urlToUse.trim()) {
+              try {
+                let urlToFetch = urlToUse.trim();
+                if (urlToFetch.includes('docs.google.com/spreadsheets/d/')) {
+                  const match = urlToFetch.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                  if (match && match[1]) {
+                    urlToFetch = `https://docs.google.com/spreadsheets/d/${match[1]}/gviz/tq?tqx=out:csv`;
+                  }
+                }
+
+                const response = await fetch(urlToFetch, { redirect: 'follow' });
+                const textData = await response.text();
+                let parsedRows = [];
+                try {
+                  const jsonData = JSON.parse(textData);
+                  if (jsonData && jsonData.data && Array.isArray(jsonData.data)) {
+                    parsedRows = jsonData.data;
+                  }
+                } catch(e) {
+                  parsedRows = parseCSVRows(textData);
+                }
+
+                const importedStudents = processRowsIntoStudents(parsedRows);
+                if (importedStudents.length > 0 && isMounted) {
+                  const currStr = localStorage.getItem('harmony_music_students') || '';
+                  const newStr = JSON.stringify(importedStudents);
+                  if (currStr !== newStr) {
+                    setStudents(importedStudents);
+                    localStorage.setItem('harmony_music_students', newStr);
+                  }
+                }
+              } catch (err) {}
+            }
           }
         };
 
         checkCentralData();
-        const timer = setInterval(checkCentralData, 5000);
+        const timer = setInterval(checkCentralData, 8000);
         return () => { isMounted = false; clearInterval(timer); };
-      }, [lastSyncTime]);
+      }, [lastSyncTime, sheetUrl]);
 
 
 
@@ -1386,6 +1426,16 @@ function updateSheet(ss, sheetName, headers, rows) {
                   style={{ fontSize: '0.825rem', background: sheetUrl ? 'var(--present-bg)' : 'var(--pending-bg)' }}
                 >
                   <i className="fa-solid fa-file-csv"></i> {sheetUrl ? (isSyncing ? 'Syncing...' : 'Sync Sheet') : 'Link Sheet'}
+                </button>
+
+                <button 
+                  onClick={() => handleFetchFromGoogleSheet(null, false)} 
+                  disabled={isSyncing}
+                  className="btn-secondary" 
+                  style={{ fontSize: '0.85rem', background: '#EEF2FF', color: 'var(--primary)', borderColor: '#C7D2FE' }} 
+                  title="Sync live data from Google Sheet"
+                >
+                  <i className={`fa-solid fa-arrows-rotate ${isSyncing ? 'fa-spin' : ''}`}></i> {isSyncing ? 'Syncing...' : 'Sync Live Data'}
                 </button>
 
                 {userRole === 'owner' && (
