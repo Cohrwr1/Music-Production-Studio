@@ -966,6 +966,114 @@ isMounted = false;
 clearInterval(timer);
 };
 }, []);
+async function autoPushToGoogleSheet(url, studs, atts) {
+if (!url || !url.trim() || url.includes('docs.google.com/spreadsheets/d/')) {
+return;
+}
+try {
+const studentsHeaders = ['Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status'];
+const studentsData = (studs || []).map(s => [s.name || '', s.dob || '', s.age || 0, s.email || '', s.phone || '', s.joiningDate || '', s.musicClass || '', s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${s.completedClassesCount || 0}/${getPackageLimit(s.packageType)}`, s.lastClassDate || 'N/A', s.feeStatus || 'paid']);
+const attendanceHeaders = ['Date', 'Student Name', 'Lesson', 'Status'];
+const attendanceData = [];
+(atts || []).forEach(rec => {
+Object.entries(rec.records || {}).forEach(([sId, st]) => {
+const stObj = (studs || []).find(s => s.id === sId);
+attendanceData.push([rec.date || '', stObj ? stObj.name : sId, stObj ? stObj.musicClass : '', st || '']);
+});
+});
+const payload = {
+type: 'SYNC_ALL',
+studentsHeaders,
+studentsData,
+attendanceHeaders,
+attendanceData
+};
+const payloadStr = JSON.stringify(payload);
+
+// 1. Dual GET Pings (Bypasses CORS POST blocking in Google Apps Script 100%!)
+try {
+const getSyncUrl = url + (url.includes('?') ? '&' : '?') + 'payload=' + encodeURIComponent(payloadStr) + '&t=' + Date.now();
+fetch(getSyncUrl, {
+mode: 'no-cors'
+}).catch(e => {});
+const img = new Image();
+img.src = getSyncUrl;
+} catch (e) {}
+
+// 2. Fetch POST
+try {
+await fetch(url, {
+method: 'POST',
+headers: {
+'Content-Type': 'text/plain;charset=utf-8'
+},
+body: payloadStr,
+mode: 'no-cors'
+});
+} catch (e) {}
+
+// 3. Hidden Form POST to iframe (Bypasses cross-origin POST restrictions)
+try {
+let iframe = document.getElementById('gs_hidden_iframe');
+if (!iframe) {
+iframe = document.createElement('iframe');
+iframe.id = 'gs_hidden_iframe';
+iframe.name = 'gs_hidden_iframe';
+iframe.style.display = 'none';
+document.body.appendChild(iframe);
+}
+let form = document.createElement('form');
+form.method = 'POST';
+form.action = url;
+form.target = 'gs_hidden_iframe';
+let input = document.createElement('input');
+input.type = 'hidden';
+input.name = 'payload';
+input.value = payloadStr;
+form.appendChild(input);
+document.body.appendChild(form);
+form.submit();
+setTimeout(() => {
+if (form.parentNode) form.parentNode.removeChild(form);
+}, 1000);
+} catch (e) {}
+} catch (err) {
+console.log('Background Google Sheet sync:', err);
+}
+}
+async function syncCentralData(newStudents, newAttendance = attendance, targetSheetUrl = sheetUrl) {
+setStudents(newStudents);
+setAttendance(newAttendance);
+localStorage.setItem('harmony_music_students', JSON.stringify(newStudents));
+localStorage.setItem('harmony_music_attendance', JSON.stringify(newAttendance));
+if (targetSheetUrl) localStorage.setItem('harmony_sheet_url', targetSheetUrl);
+
+// 1. INSTANT REAL-TIME CENTRAL CLOUD SYNC (Works 100% on GitHub Pages & PC2!)
+try {
+await fetch(CLOUD_DB_URL, {
+method: 'PUT',
+headers: {
+'Content-Type': 'application/json'
+},
+body: JSON.stringify({
+name: 'Harmony Music Studio Central Database 2026',
+data: {
+students: newStudents,
+attendance: newAttendance,
+updatedAt: Date.now()
+}
+})
+});
+} catch (e) {
+console.log('Real-time cloud PUT error:', e);
+}
+
+// 2. Optional push to Google Sheet if Web App URL is connected & user is Owner
+const sheetUrlToUse = targetSheetUrl || sheetUrl || localStorage.getItem('harmony_sheet_url') || DEFAULT_SHEET_URL;
+if (sheetUrlToUse && sheetUrlToUse.trim() && userRole === 'owner') {
+autoPushToGoogleSheet(sheetUrlToUse, newStudents, newAttendance);
+}
+}
 
 // Role-Based Unlock Handler
 const handleUnlockStudio = e => {
