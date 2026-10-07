@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
+</head>
+<body>
+  <textarea id="jsx"></textarea>
+  <div id="output"></div>
+  <script>
+    async function doCompile() {
+      const resp = await fetch('temp_script.jsx');
+      const jsxCode = await resp.text();
+      try {
+        const compiled = Babel.transform(jsxCode, { presets: ['react'] }).code;
+        document.getElementById('output').innerText = 'SUCCESS:\n' + compiled;
+      } catch (err) {
+        document.getElementById('output').innerText = 'ERROR:\n' + err.toString();
+      }
+    }
+    doCompile();
+  </script>
+</body>
+</html>
