@@ -872,6 +872,31 @@ const [extraClassDate, setExtraClassDate] = useState(new Date().toISOString().sp
 const [extraClassNotes, setExtraClassNotes] = useState('Extra practice session');
 const [activeTab, setActiveTab] = useState('attendance');
 const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+// Filtering, Modal, Form & App States (Restored)
+const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+const [selectedLessonFilter, setSelectedLessonFilter] = useState('All');
+const [showOnlyTodayScheduled, setShowOnlyTodayScheduled] = useState(true);
+const [searchQuery, setSearchQuery] = useState('');
+const [isSyncing, setIsSyncing] = useState(false);
+const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
+const [isEditStudentOpen, setIsEditStudentOpen] = useState(false);
+const [studentToEdit, setStudentToEdit] = useState(null);
+const [isPasteDataOpen, setIsPasteDataOpen] = useState(false);
+const [pastedText, setPastedText] = useState('');
+const [formData, setFormData] = useState({
+name: '',
+dob: '',
+age: 0,
+email: '',
+phone: '',
+joiningDate: new Date().toISOString().split('T')[0],
+musicClass: 'Vocal Lessons',
+classDays: 'Mon & Thu',
+packageType: '1 Month (8 Classes)',
+feeStatus: 'paid',
+completedClassesCount: 0
+});
 const [students, setStudents] = useState(() => {
 const local = localStorage.getItem('harmony_music_students');
 if (local) {
