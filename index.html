@@ -2304,10 +2304,6 @@ return imported;
 }
 async function handleFetchFromGoogleSheet(overrideUrl = null, silent = false) {
 const targetUrl = overrideUrl || sheetUrl;
-if (userRole !== 'owner' && !overrideUrl) {
-if (!silent) alert('🔒 Permission Denied: User Mode is View-Only. Log in with the Owner Passcode to fetch sheet data.');
-return;
-}
 if (!targetUrl || !targetUrl.trim()) {
 if (!silent) setActiveTab('sheets');
 return;
@@ -5462,3 +5458,4 @@ ReactDOM.createRoot(document.getElementById('root')).render( /*#__PURE__*/React.
   </script>
 </body>
 </html>
+
