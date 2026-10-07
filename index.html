@@ -395,7 +395,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzOM0CjINqjbSM7a38TclDer5JqbKX6n3C4SvyhZphre1DpAq1V8DZv2iqKioU5x59J/exec'; // Embed your https://script.google.com/macros/s/.../exec Web App URL here for instant global auto-connect!
 
     const MUSIC_LESSON_OPTIONS = ['Vocal Lessons', 'Piano Lessons', 'App Lessons'];
 
@@ -595,7 +595,21 @@ function updateSheet(ss, sheetName, headers, rows) {
         return [{ id: `${today}_All`, date: today, className: 'All', records: {} }];
       });
 
-      const [sheetUrl, setSheetUrl] = useState(() => localStorage.getItem('harmony_sheet_url') || '');
+      const [sheetUrl, setSheetUrl] = useState(() => localStorage.getItem('harmony_sheet_url') || DEFAULT_SHEET_URL || '');
+
+      // Initial startup check: auto-fetch from Google Sheet on launch so all devices see live roster
+      useEffect(() => {
+        const urlToUse = sheetUrl || localStorage.getItem('harmony_sheet_url') || DEFAULT_SHEET_URL;
+        if (urlToUse && urlToUse.trim()) {
+          handleFetchFromGoogleSheet(urlToUse, true);
+        } else {
+          const local = localStorage.getItem('harmony_music_students');
+          if (!local || JSON.parse(local).length === 0) {
+            const demo = generateInitialMusicStudents();
+            syncCentralData(demo, attendance);
+          }
+        }
+      }, []);
       const [isSyncing, setIsSyncing] = useState(false);
       const [lastSyncTime, setLastSyncTime] = useState(0);
       const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -763,19 +777,7 @@ function updateSheet(ss, sheetName, headers, rows) {
         return () => { isMounted = false; clearInterval(timer); };
       }, [lastSyncTime]);
 
-      // Initial startup check for empty local data
-      useEffect(() => {
-        const local = localStorage.getItem('harmony_music_students');
-        if (!local || JSON.parse(local).length === 0) {
-          const savedSheet = localStorage.getItem('harmony_sheet_url');
-          if (savedSheet) {
-            handleFetchFromGoogleSheet(savedSheet, true);
-          } else {
-            const demo = generateInitialMusicStudents();
-            syncCentralData(demo, attendance);
-          }
-        }
-      }, []);
+
 
       // Role-Based Unlock Handler
       const handleUnlockStudio = (e) => {
