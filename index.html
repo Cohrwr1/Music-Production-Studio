@@ -696,6 +696,727 @@ function(a,b,c){if(!Vd(b))throw Error(n(200));return Wd(null,a,b,!1,c)};Q.unmoun
 
   </script>
   <script>
+const DEFAULT_STUDENTS = [{
+"id": "music_std_1",
+"name": "Aarav Sharma",
+"dob": "2012-01-01",
+"age": 14,
+"email": "aarav.sharma@gmail.com",
+"phone": "+91 9826662586",
+"joiningDate": "2026-01-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Mon & Thu",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 0,
+"lastClassDate": "2026-10-01",
+"feeStatus": "pending",
+"avatarColor": "#6366F1"
+}, {
+"id": "music_std_2",
+"name": "Ananya Verma",
+"dob": "2011-02-02",
+"age": 15,
+"email": "ananya.verma@gmail.com",
+"phone": "+91 9870993882",
+"joiningDate": "2026-02-10",
+"musicClass": "Piano Lessons",
+"classDays": "Tue & Fri",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 1,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#0284C7"
+}, {
+"id": "music_std_3",
+"name": "Rohan Gupta",
+"dob": "2010-03-03",
+"age": 16,
+"email": "rohan.gupta@gmail.com",
+"phone": "+91 9821493814",
+"joiningDate": "2026-03-10",
+"musicClass": "App Lessons",
+"classDays": "Wed & Sat",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 2,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#0D9488"
+}, {
+"id": "music_std_4",
+"name": "Priya Patel",
+"dob": "2009-04-04",
+"age": 17,
+"email": "priya.patel@gmail.com",
+"phone": "+91 9883374175",
+"joiningDate": "2026-04-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Mon & Thu",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 3,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#16A34A"
+}, {
+"id": "music_std_5",
+"name": "Vivaan Singh",
+"dob": "2008-05-05",
+"age": 18,
+"email": "vivaan.singh@gmail.com",
+"phone": "+91 9887765666",
+"joiningDate": "2026-05-10",
+"musicClass": "Piano Lessons",
+"classDays": "Saturday Only",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 0,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#D97706"
+}, {
+"id": "music_std_6",
+"name": "Diya Kumar",
+"dob": "2007-06-06",
+"age": 19,
+"email": "diya.kumar@gmail.com",
+"phone": "+91 9894142452",
+"joiningDate": "2026-01-10",
+"musicClass": "App Lessons",
+"classDays": "Sunday Only",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 1,
+"lastClassDate": "2026-10-01",
+"feeStatus": "pending",
+"avatarColor": "#9333EA"
+}, {
+"id": "music_std_7",
+"name": "Aditya Mehta",
+"dob": "2006-07-07",
+"age": 20,
+"email": "aditya.mehta@gmail.com",
+"phone": "+91 9860180081",
+"joiningDate": "2026-02-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Tue & Fri",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 2,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#DB2777"
+}, {
+"id": "music_std_8",
+"name": "Sanya Joshi",
+"dob": "2005-08-08",
+"age": 21,
+"email": "sanya.joshi@gmail.com",
+"phone": "+91 9864888653",
+"joiningDate": "2026-03-10",
+"musicClass": "Piano Lessons",
+"classDays": "Mon & Thu",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 3,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#6366F1"
+}, {
+"id": "music_std_9",
+"name": "Kabir Shah",
+"dob": "2004-09-09",
+"age": 22,
+"email": "kabir.shah@gmail.com",
+"phone": "+91 9869700182",
+"joiningDate": "2026-04-10",
+"musicClass": "App Lessons",
+"classDays": "Tue & Fri",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 0,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#0284C7"
+}, {
+"id": "music_std_10",
+"name": "Isha Nair",
+"dob": "2003-10-10",
+"age": 22,
+"email": "isha.nair@gmail.com",
+"phone": "+91 9823754250",
+"joiningDate": "2026-05-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Wed & Sat",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 1,
+"lastClassDate": "2026-10-01",
+"feeStatus": "overdue",
+"avatarColor": "#0D9488"
+}, {
+"id": "music_std_11",
+"name": "Arjun Rao",
+"dob": "2002-11-11",
+"age": 23,
+"email": "arjun.rao@gmail.com",
+"phone": "+91 9878528033",
+"joiningDate": "2026-01-10",
+"musicClass": "Piano Lessons",
+"classDays": "Mon & Thu",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 2,
+"lastClassDate": "2026-10-01",
+"feeStatus": "pending",
+"avatarColor": "#16A34A"
+}, {
+"id": "music_std_12",
+"name": "Sneha Chopra",
+"dob": "2001-12-12",
+"age": 24,
+"email": "sneha.chopra@gmail.com",
+"phone": "+91 9864130575",
+"joiningDate": "2026-02-10",
+"musicClass": "App Lessons",
+"classDays": "Saturday Only",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 3,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#D97706"
+}, {
+"id": "music_std_13",
+"name": "Vihaan Malhotra",
+"dob": "2000-01-13",
+"age": 26,
+"email": "vihaan.malhotra@gmail.com",
+"phone": "+91 9899487147",
+"joiningDate": "2026-03-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Sunday Only",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 0,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#9333EA"
+}, {
+"id": "music_std_14",
+"name": "Tanvi Bhatia",
+"dob": "1999-02-14",
+"age": 27,
+"email": "tanvi.bhatia@gmail.com",
+"phone": "+91 9824822610",
+"joiningDate": "2026-04-10",
+"musicClass": "Piano Lessons",
+"classDays": "Tue & Fri",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 1,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#DB2777"
+}, {
+"id": "music_std_15",
+"name": "Dev Kapoor",
+"dob": "1998-03-15",
+"age": 28,
+"email": "dev.kapoor@gmail.com",
+"phone": "+91 9863081439",
+"joiningDate": "2026-05-10",
+"musicClass": "App Lessons",
+"classDays": "Mon & Thu",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 2,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#6366F1"
+}, {
+"id": "music_std_16",
+"name": "Kavya Sharma",
+"dob": "1997-04-16",
+"age": 29,
+"email": "kavya.sharma@gmail.com",
+"phone": "+91 9872281341",
+"joiningDate": "2026-01-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Tue & Fri",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 3,
+"lastClassDate": "2026-10-01",
+"feeStatus": "pending",
+"avatarColor": "#0284C7"
+}, {
+"id": "music_std_17",
+"name": "Reyansh Verma",
+"dob": "1996-05-17",
+"age": 30,
+"email": "reyansh.verma@gmail.com",
+"phone": "+91 9879522462",
+"joiningDate": "2026-02-10",
+"musicClass": "Piano Lessons",
+"classDays": "Wed & Sat",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 0,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#0D9488"
+}, {
+"id": "music_std_18",
+"name": "Meera Gupta",
+"dob": "1995-06-18",
+"age": 31,
+"email": "meera.gupta@gmail.com",
+"phone": "+91 9887097944",
+"joiningDate": "2026-03-10",
+"musicClass": "App Lessons",
+"classDays": "Mon & Thu",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 1,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#16A34A"
+}, {
+"id": "music_std_19",
+"name": "Krishna Patel",
+"dob": "1994-07-19",
+"age": 32,
+"email": "krishna.patel@gmail.com",
+"phone": "+91 9820957116",
+"joiningDate": "2026-04-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Saturday Only",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 2,
+"lastClassDate": "2026-10-01",
+"feeStatus": "overdue",
+"avatarColor": "#D97706"
+}, {
+"id": "music_std_20",
+"name": "Riya Singh",
+"dob": "1993-08-20",
+"age": 33,
+"email": "riya.singh@gmail.com",
+"phone": "+91 9835721283",
+"joiningDate": "2026-05-10",
+"musicClass": "Piano Lessons",
+"classDays": "Sunday Only",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 3,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#9333EA"
+}, {
+"id": "music_std_21",
+"name": "Ishaan Kumar",
+"dob": "2012-09-21",
+"age": 14,
+"email": "ishaan.kumar@gmail.com",
+"phone": "+91 9840165831",
+"joiningDate": "2026-01-10",
+"musicClass": "App Lessons",
+"classDays": "Tue & Fri",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 0,
+"lastClassDate": "2026-10-01",
+"feeStatus": "pending",
+"avatarColor": "#DB2777"
+}, {
+"id": "music_std_22",
+"name": "Kriti Mehta",
+"dob": "2011-10-22",
+"age": 14,
+"email": "kriti.mehta@gmail.com",
+"phone": "+91 9849811760",
+"joiningDate": "2026-02-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Mon & Thu",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 1,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#6366F1"
+}, {
+"id": "music_std_23",
+"name": "Shaurya Joshi",
+"dob": "2010-11-23",
+"age": 15,
+"email": "shaurya.joshi@gmail.com",
+"phone": "+91 9838147541",
+"joiningDate": "2026-03-10",
+"musicClass": "Piano Lessons",
+"classDays": "Tue & Fri",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 2,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#0284C7"
+}, {
+"id": "music_std_24",
+"name": "Aanya Shah",
+"dob": "2009-12-24",
+"age": 16,
+"email": "aanya.shah@gmail.com",
+"phone": "+91 9886317429",
+"joiningDate": "2026-04-10",
+"musicClass": "App Lessons",
+"classDays": "Wed & Sat",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 3,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#0D9488"
+}, {
+"id": "music_std_25",
+"name": "Yash Nair",
+"dob": "2008-01-25",
+"age": 18,
+"email": "yash.nair@gmail.com",
+"phone": "+91 9874039151",
+"joiningDate": "2026-05-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Mon & Thu",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 0,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#16A34A"
+}, {
+"id": "music_std_26",
+"name": "Avani Rao",
+"dob": "2007-02-26",
+"age": 19,
+"email": "avani.rao@gmail.com",
+"phone": "+91 9886406851",
+"joiningDate": "2026-01-10",
+"musicClass": "Piano Lessons",
+"classDays": "Saturday Only",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 1,
+"lastClassDate": "2026-10-01",
+"feeStatus": "pending",
+"avatarColor": "#D97706"
+}, {
+"id": "music_std_27",
+"name": "Ayush Chopra",
+"dob": "2006-03-27",
+"age": 20,
+"email": "ayush.chopra@gmail.com",
+"phone": "+91 9862204721",
+"joiningDate": "2026-02-10",
+"musicClass": "App Lessons",
+"classDays": "Sunday Only",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 2,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#9333EA"
+}, {
+"id": "music_std_28",
+"name": "Zara Malhotra",
+"dob": "2005-04-28",
+"age": 21,
+"email": "zara.malhotra@gmail.com",
+"phone": "+91 9843697125",
+"joiningDate": "2026-03-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Tue & Fri",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 3,
+"lastClassDate": "2026-10-01",
+"feeStatus": "overdue",
+"avatarColor": "#DB2777"
+}, {
+"id": "music_std_29",
+"name": "Dhruv Bhatia",
+"dob": "2004-05-01",
+"age": 22,
+"email": "dhruv.bhatia@gmail.com",
+"phone": "+91 9860909309",
+"joiningDate": "2026-04-10",
+"musicClass": "Piano Lessons",
+"classDays": "Mon & Thu",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 0,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#6366F1"
+}, {
+"id": "music_std_30",
+"name": "Pari Kapoor",
+"dob": "2003-06-02",
+"age": 23,
+"email": "pari.kapoor@gmail.com",
+"phone": "+91 9848687161",
+"joiningDate": "2026-05-10",
+"musicClass": "App Lessons",
+"classDays": "Tue & Fri",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 1,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#0284C7"
+}, {
+"id": "music_std_31",
+"name": "Neer Sharma",
+"dob": "2002-07-03",
+"age": 24,
+"email": "neer.sharma@gmail.com",
+"phone": "+91 9842046589",
+"joiningDate": "2026-01-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Wed & Sat",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 2,
+"lastClassDate": "2026-10-01",
+"feeStatus": "pending",
+"avatarColor": "#0D9488"
+}, {
+"id": "music_std_32",
+"name": "Bhavya Verma",
+"dob": "2001-08-04",
+"age": 25,
+"email": "bhavya.verma@gmail.com",
+"phone": "+91 9885404235",
+"joiningDate": "2026-02-10",
+"musicClass": "Piano Lessons",
+"classDays": "Mon & Thu",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 3,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#16A34A"
+}, {
+"id": "music_std_33",
+"name": "Atharv Gupta",
+"dob": "2000-09-05",
+"age": 26,
+"email": "atharv.gupta@gmail.com",
+"phone": "+91 9865683707",
+"joiningDate": "2026-03-10",
+"musicClass": "App Lessons",
+"classDays": "Saturday Only",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 0,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#D97706"
+}, {
+"id": "music_std_34",
+"name": "Nisha Patel",
+"dob": "1999-10-06",
+"age": 27,
+"email": "nisha.patel@gmail.com",
+"phone": "+91 9891639896",
+"joiningDate": "2026-04-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Sunday Only",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 1,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#9333EA"
+}, {
+"id": "music_std_35",
+"name": "Rudra Singh",
+"dob": "1998-11-07",
+"age": 27,
+"email": "rudra.singh@gmail.com",
+"phone": "+91 9851519830",
+"joiningDate": "2026-05-10",
+"musicClass": "Piano Lessons",
+"classDays": "Tue & Fri",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 2,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#DB2777"
+}, {
+"id": "music_std_36",
+"name": "Prisha Kumar",
+"dob": "1997-12-08",
+"age": 28,
+"email": "prisha.kumar@gmail.com",
+"phone": "+91 9871703050",
+"joiningDate": "2026-01-10",
+"musicClass": "App Lessons",
+"classDays": "Mon & Thu",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 3,
+"lastClassDate": "2026-10-01",
+"feeStatus": "pending",
+"avatarColor": "#6366F1"
+}, {
+"id": "music_std_37",
+"name": "Manan Mehta",
+"dob": "1996-01-09",
+"age": 30,
+"email": "manan.mehta@gmail.com",
+"phone": "+91 9866119788",
+"joiningDate": "2026-02-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Tue & Fri",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 0,
+"lastClassDate": "2026-10-01",
+"feeStatus": "overdue",
+"avatarColor": "#0284C7"
+}, {
+"id": "music_std_38",
+"name": "Tanya Joshi",
+"dob": "1995-02-10",
+"age": 31,
+"email": "tanya.joshi@gmail.com",
+"phone": "+91 9813807536",
+"joiningDate": "2026-03-10",
+"musicClass": "Piano Lessons",
+"classDays": "Wed & Sat",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 1,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#0D9488"
+}, {
+"id": "music_std_39",
+"name": "Samarth Shah",
+"dob": "1994-03-11",
+"age": 32,
+"email": "samarth.shah@gmail.com",
+"phone": "+91 9888967767",
+"joiningDate": "2026-04-10",
+"musicClass": "App Lessons",
+"classDays": "Mon & Thu",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 2,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#16A34A"
+}, {
+"id": "music_std_40",
+"name": "Anika Nair",
+"dob": "1993-04-12",
+"age": 33,
+"email": "anika.nair@gmail.com",
+"phone": "+91 9894517443",
+"joiningDate": "2026-05-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Saturday Only",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 3,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#D97706"
+}, {
+"id": "music_std_41",
+"name": "Siddharth Rao",
+"dob": "2012-05-13",
+"age": 14,
+"email": "siddharth.rao@gmail.com",
+"phone": "+91 9877383670",
+"joiningDate": "2026-01-10",
+"musicClass": "Piano Lessons",
+"classDays": "Sunday Only",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 0,
+"lastClassDate": "2026-10-01",
+"feeStatus": "pending",
+"avatarColor": "#9333EA"
+}, {
+"id": "music_std_42",
+"name": "Navya Chopra",
+"dob": "2011-06-14",
+"age": 15,
+"email": "navya.chopra@gmail.com",
+"phone": "+91 9865249653",
+"joiningDate": "2026-02-10",
+"musicClass": "App Lessons",
+"classDays": "Tue & Fri",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 1,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#DB2777"
+}, {
+"id": "music_std_43",
+"name": "Harsh Malhotra",
+"dob": "2010-07-15",
+"age": 16,
+"email": "harsh.malhotra@gmail.com",
+"phone": "+91 9866585832",
+"joiningDate": "2026-03-10",
+"musicClass": "Vocal Lessons",
+"classDays": "Mon & Thu",
+"packageType": "12 Classes Package (\u20b915,000)",
+"packageAmount": 15000,
+"completedClassesCount": 2,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#6366F1"
+}, {
+"id": "music_std_44",
+"name": "Tara Bhatia",
+"dob": "2009-08-16",
+"age": 17,
+"email": "tara.bhatia@gmail.com",
+"phone": "+91 9818310174",
+"joiningDate": "2026-04-10",
+"musicClass": "Piano Lessons",
+"classDays": "Tue & Fri",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 3,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#0284C7"
+}, {
+"id": "music_std_45",
+"name": "Karan Kapoor",
+"dob": "2008-09-17",
+"age": 18,
+"email": "karan.kapoor@gmail.com",
+"phone": "+91 9845469869",
+"joiningDate": "2026-05-10",
+"musicClass": "App Lessons",
+"classDays": "Wed & Sat",
+"packageType": "4 Classes Package (\u20b96,000)",
+"packageAmount": 6000,
+"completedClassesCount": 0,
+"lastClassDate": "2026-10-01",
+"feeStatus": "paid",
+"avatarColor": "#0D9488"
+}];
 const CLOUD_DB_URL = 'https://api.restful-api.dev/objects/ff808181a09d98f701a115f991681560';
 const {
 useState,
@@ -902,7 +1623,10 @@ const local = localStorage.getItem('harmony_music_students');
 if (local) {
 try {
 const parsed = JSON.parse(local);
-if (Array.isArray(parsed)) return parsed;
+if (Array.isArray(parsed)) {
+const clean = parsed.filter(s => s && s.name && !s.name.includes('function') && !s.name.includes('typeof') && !s.name.includes('<') && s.name.length <= 50);
+return clean;
+}
 } catch (e) {}
 }
 return [];
@@ -944,13 +1668,14 @@ if (response.ok) {
 const json = await response.json();
 const cloudData = json?.data;
 if (cloudData && Array.isArray(cloudData.students)) {
+const cleanCloud = cloudData.students.filter(s => s && s.name && !s.name.includes('function') && !s.name.includes('typeof') && !s.name.includes('<') && s.name.length <= 50);
 if (isMounted) {
-const cloudStudentsStr = JSON.stringify(cloudData.students);
+const cleanStr = JSON.stringify(cleanCloud);
 const currStudentsStr = localStorage.getItem('harmony_music_students') || '';
-if (cloudStudentsStr !== currStudentsStr || students.length === 0) {
-setStudents(cloudData.students);
+if (cleanStr !== currStudentsStr) {
+setStudents(cleanCloud);
 if (cloudData.attendance) setAttendance(cloudData.attendance);
-localStorage.setItem('harmony_music_students', cloudStudentsStr);
+localStorage.setItem('harmony_music_students', cleanStr);
 if (cloudData.attendance) localStorage.setItem('harmony_music_attendance', JSON.stringify(cloudData.attendance));
 return;
 }
@@ -1134,9 +1859,13 @@ setChangePasscodeError('');
 alert(`✅ Security Passcodes successfully updated!\n\n👑 Owner Passcode: ${newOwnerPinForm.trim()}\n👤 User Passcode: ${newUserPinForm.trim()}`);
 };
 const handleClearAllStudents = () => {
-if (confirm('🧹 Are you sure you want to clear all student records from central database?')) {
-syncCentralData([], attendance);
-alert('✅ All student records cleared centrally! Your app is now starting fresh.');
+if (userRole !== 'owner') {
+alert('🔒 Permission Denied: User Mode is View-Only. Log in with the Owner Passcode to clear data.');
+return;
+}
+if (confirm('Are you sure you want to clear all student records? Your directory will be reset to 0 students.')) {
+syncCentralData([], []);
+alert('✅ All student records cleared! App is now at 0 students ready for your additions.');
 }
 };
 const handleLoadSampleStudents = () => {
@@ -1505,6 +2234,11 @@ if (idx !== -1) return idx;
 return -1;
 };
 const nameCol = findCol(['name', 'student name', 'full name', 'student']);
+
+// REJECT SHEET IF NO VALID NAME HEADER COLUMN EXISTS
+if (nameCol === -1) {
+return [];
+}
 const dobCol = findCol(['dob', 'date of birth', 'birth', 'birthdate']);
 const ageCol = findCol(['age']);
 const emailCol = findCol(['email', 'email id', 'mail']);
@@ -1516,12 +2250,20 @@ const daysCol = findCol(['class days', 'classes per week', 'schedule', 'days', '
 const pkgCol = findCol(['package', 'tuition package', 'plan', 'bundle']);
 const countCol = findCol(['completed classes', 'classes completed', 'classes used', 'completed', 'progress']);
 const lastDateCol = findCol(['last class date', 'class date', 'last date', 'payment date']);
-const actualNameCol = nameCol !== -1 ? nameCol : 0;
+const actualNameCol = nameCol;
 const imported = [];
 for (let i = 1; i < rows.length; i++) {
 const row = rows[i];
-if (!row[actualNameCol] || String(row[actualNameCol]).trim() === '') continue;
-const name = String(row[actualNameCol]).trim();
+if (!row[actualNameCol]) continue;
+const rawName = String(row[actualNameCol]).trim();
+if (!rawName) continue;
+const lowerName = rawName.toLowerCase();
+
+// REJECT JS CODE / HTML INJECTION
+if (rawName.length > 50 || rawName.length < 2 || lowerName.includes('function') || lowerName.includes('var ') || lowerName.includes('const ') || lowerName.includes('let ') || lowerName.includes('typeof') || lowerName.includes('__proto__') || lowerName.includes('globalthis') || lowerName.includes('<script') || lowerName.includes('<meta') || lowerName.includes('doctype') || lowerName.includes('http:') || lowerName.includes('https:') || lowerName.includes('{') || lowerName.includes('}') || lowerName.includes(';') || lowerName.includes('=>') || lowerName.includes('===')) {
+continue;
+}
+const name = rawName;
 const dob = dobCol !== -1 && row[dobCol] ? String(row[dobCol]).trim() : '2005-01-01';
 const age = ageCol !== -1 && row[ageCol] ? Number(row[ageCol]) : calculateAge(dob);
 const email = emailCol !== -1 && row[emailCol] ? String(row[emailCol]).trim() : `${name.toLowerCase().replace(/\s+/g, '.')}@gmail.com`;
@@ -1583,6 +2325,11 @@ const response = await fetch(urlToFetch, {
 redirect: 'follow'
 });
 const textData = await response.text();
+const lowerText = textData.trim().toLowerCase();
+if (lowerText.startsWith('<') || lowerText.includes('<!doctype') || lowerText.includes('<html') || lowerText.includes('<script') || lowerText.includes('404. that') || lowerText.includes('access denied')) {
+if (!silent) alert('⚠️ Invalid Google Sheet Link:\n\nGoogle returned an HTML web page (or 404 Not Found error) instead of sheet data.\n\n💡 Quick Fix:\n1. Ensure your Google Sheet is set to "Anyone with the link can view", OR\n2. Use the Apps Script Web App URL ending with /exec.');
+return;
+}
 let parsedRows = [];
 try {
 const jsonData = JSON.parse(textData);
