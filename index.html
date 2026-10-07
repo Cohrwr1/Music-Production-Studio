@@ -395,7 +395,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzOM0CjINqjbSM7a38TclDer5JqbKX6n3C4SvyhZphre1DpAq1V8DZv2iqKioU5x59J/exec'; // Embed your https://script.google.com/macros/s/.../exec Web App URL here for instant global auto-connect!
+    const DEFAULT_SHEET_URL = ''; // Embed your https://script.google.com/macros/s/.../exec Web App URL here for instant global auto-connect!
 
     const MUSIC_LESSON_OPTIONS = ['Vocal Lessons', 'Piano Lessons', 'App Lessons'];
 
@@ -641,7 +641,7 @@ function updateSheet(ss, sheetName, headers, rows) {
       });
 
       // --- CENTRAL MULTI-DEVICE SYNCHRONIZATION ENGINE ---
-      const syncCentralData = async (newStudents, newAttendance = attendance, targetSheetUrl = sheetUrl) => {
+      async function syncCentralData(newStudents, newAttendance = attendance, targetSheetUrl = sheetUrl) {
         const now = Date.now();
         setStudents(newStudents);
         setAttendance(newAttendance);
@@ -671,9 +671,9 @@ function updateSheet(ss, sheetName, headers, rows) {
         if (targetSheetUrl && targetSheetUrl.trim() && userRole === 'owner') {
           autoPushToGoogleSheet(targetSheetUrl, newStudents, newAttendance);
         }
-      };
+      }
 
-      const autoPushToGoogleSheet = async (url, studs, atts) => {
+      async function autoPushToGoogleSheet(url, studs, atts) {
         if (!url || !url.trim() || url.includes('docs.google.com/spreadsheets/d/')) {
           return;
         }
@@ -1188,7 +1188,7 @@ function updateSheet(ss, sheetName, headers, rows) {
         return false;
       };
 
-      const processRowsIntoStudents = (rows) => {
+      function processRowsIntoStudents(rows) {
         if (!rows || rows.length < 2) return [];
         const headers = rows[0].map(h => String(h).trim().toLowerCase());
 
@@ -1263,12 +1263,12 @@ function updateSheet(ss, sheetName, headers, rows) {
           });
         }
         return imported;
-      };
+      }
 
-      const handleFetchFromGoogleSheet = async (overrideUrl = null, silent = false) => {
+      async function handleFetchFromGoogleSheet(overrideUrl = null, silent = false) {
         const targetUrl = overrideUrl || sheetUrl;
         if (userRole !== 'owner' && !overrideUrl) {
-          alert('🔒 Permission Denied: User Mode is View-Only. Log in with the Owner Passcode to fetch sheet data.');
+          if (!silent) alert('🔒 Permission Denied: User Mode is View-Only. Log in with the Owner Passcode to fetch sheet data.');
           return;
         }
         if (!targetUrl || !targetUrl.trim()) {
@@ -1312,7 +1312,7 @@ function updateSheet(ss, sheetName, headers, rows) {
         } finally {
           setIsSyncing(false);
         }
-      };
+      }
 
       const handleImportPastedData = () => {
         if (userRole !== 'owner') {
