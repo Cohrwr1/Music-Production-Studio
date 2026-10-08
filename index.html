@@ -1627,6 +1627,11 @@ const [searchQuery, setSearchQuery] = useState('');
 const [isSyncing, setIsSyncing] = useState(false);
 const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
 const [isEditStudentOpen, setIsEditStudentOpen] = useState(false);
+const [showBacklogModal, setShowBacklogModal] = useState(false);
+const [backlogStudentId, setBacklogStudentId] = useState('');
+const [backlogStartDate, setBacklogStartDate] = useState('2025-01-01');
+const [backlogEndDate, setBacklogEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+const [backlogDateMap, setBacklogDateMap] = useState({});
 const [studentToEdit, setStudentToEdit] = useState(null);
 const [isPasteDataOpen, setIsPasteDataOpen] = useState(false);
 const [pastedText, setPastedText] = useState('');
@@ -2206,6 +2211,190 @@ return rec?.records?.[studentId] || 'unmarked';
 };
 
 // Automated Class-Count Expiry Logic on Attendance Marking (Owner Only)
+const openBacklogModal = studentId => {
+if (userRole !== 'owner') {
+alert('🔒 User Mode is View-Only. Log in with Owner Passcode (2026) to add or edit past backlog dates.');
+return;
+}
+const stId = studentId || (students[0] ? students[0].id : '');
+setBacklogStudentId(stId);
+const targetStudent = students.find(s => s.id === stId);
+const initialStartDate = formatDateToYYYYMMDD(targetStudent?.joiningDate || '2025-01-01');
+const initialEndDate = formatDateToYYYYMMDD(new Date().toISOString().split('T')[0]);
+setBacklogStartDate(initialStartDate);
+setBacklogEndDate(initialEndDate);
+generateBacklogDateMap(stId, initialStartDate, initialEndDate);
+setShowBacklogModal(true);
+};
+const getDatesInRange = (startDateStr, endDateStr) => {
+const dates = [];
+try {
+let curr = new Date(startDateStr);
+const end = new Date(endDateStr);
+if (isNaN(curr.getTime()) || isNaN(end.getTime())) return [];
+let safetyCounter = 0;
+while (curr <= end && safetyCounter < 500) {
+const year = curr.getFullYear();
+const month = String(curr.getMonth() + 1).padStart(2, '0');
+const day = String(curr.getDate()).padStart(2, '0');
+dates.push(`${year}-${month}-${day}`);
+curr.setDate(curr.getDate() + 1);
+safetyCounter++;
+}
+} catch (err) {
+console.error('Error generating dates in range:', err);
+}
+return dates;
+};
+const generateBacklogDateMap = (stId, startStr, endStr) => {
+const dates = getDatesInRange(startStr, endStr);
+const map = {};
+dates.forEach(dStr => {
+const existingRec = attendance.find(r => r.date === dStr);
+const status = existingRec?.records?.[stId] || 'none';
+const note = existingRec?.remarks?.[stId] || '';
+map[dStr] = {
+status,
+note
+};
+});
+setBacklogDateMap(map);
+};
+const toggleBacklogDateStatus = (dStr, newStatus) => {
+setBacklogDateMap(prev => ({
+...prev,
+[dStr]: {
+...(prev[dStr] || {
+note: ''
+}),
+status: prev[dStr]?.status === newStatus ? 'none' : newStatus
+}
+}));
+};
+const setBacklogDateNote = (dStr, noteText) => {
+setBacklogDateMap(prev => ({
+...prev,
+[dStr]: {
+...(prev[dStr] || {
+status: 'none'
+}),
+note: noteText
+}
+}));
+};
+const applyQuickDayPreset = presetType => {
+const dates = getDatesInRange(backlogStartDate, backlogEndDate);
+const updatedMap = {
+...backlogDateMap
+};
+dates.forEach(dStr => {
+const dayOfWeek = new Date(dStr).getDay();
+let shouldMarkPresent = false;
+if (presetType === 'all') {
+shouldMarkPresent = true;
+} else if (presetType === 'mon_wed_fri') {
+shouldMarkPresent = [1, 3, 5].includes(dayOfWeek);
+} else if (presetType === 'tue_thu_sat') {
+shouldMarkPresent = [2, 4, 6].includes(dayOfWeek);
+} else if (presetType === 'sat_sun') {
+shouldMarkPresent = [0, 6].includes(dayOfWeek);
+} else if (presetType === 'clear') {
+shouldMarkPresent = false;
+}
+updatedMap[dStr] = {
+...(updatedMap[dStr] || {
+note: ''
+}),
+status: shouldMarkPresent ? 'present' : 'none'
+};
+});
+setBacklogDateMap(updatedMap);
+};
+const saveBacklogData = () => {
+if (!backlogStudentId) {
+alert('Please select a student.');
+return;
+}
+const student = students.find(s => s.id === backlogStudentId);
+if (!student) return;
+const limit = getPackageLimit(student.packageType);
+let updatedAttendance = [...attendance];
+const activeEntries = Object.entries(backlogDateMap).filter(([dStr, item]) => item.status !== 'none' || item.note.trim() !== '');
+activeEntries.forEach(([dStr, item]) => {
+const recIndex = updatedAttendance.findIndex(r => r.date === dStr);
+if (recIndex >= 0) {
+const rec = {
+...updatedAttendance[recIndex]
+};
+rec.records = {
+...(rec.records || {}),
+[backlogStudentId]: item.status
+};
+rec.remarks = {
+...(rec.remarks || {}),
+[backlogStudentId]: item.note
+};
+updatedAttendance[recIndex] = rec;
+} else {
+updatedAttendance.push({
+id: `${dStr}_All`,
+date: dStr,
+className: 'All',
+records: {
+[backlogStudentId]: item.status
+},
+remarks: {
+[backlogStudentId]: item.note
+}
+});
+}
+});
+let totalAttendedCount = 0;
+let sortedAttendedDates = [];
+Object.entries(backlogDateMap).forEach(([dStr, item]) => {
+if (item.status === 'present' || item.status === 'extra') {
+totalAttendedCount++;
+sortedAttendedDates.push(dStr);
+}
+});
+sortedAttendedDates.sort();
+const latestClassDate = sortedAttendedDates.length > 0 ? sortedAttendedDates[sortedAttendedDates.length - 1] : student.lastClassDate;
+const completedFullCycles = Math.floor(totalAttendedCount / limit);
+const currentCycleCount = totalAttendedCount % limit;
+let updatedPackageHistory = [];
+for (let c = 1; c <= completedFullCycles; c++) {
+const cycleStartIdx = (c - 1) * limit;
+const cycleEndIdx = c * limit - 1;
+const cycleStart = sortedAttendedDates[cycleStartIdx] || backlogStartDate;
+const cycleEnd = sortedAttendedDates[cycleEndIdx] || latestClassDate;
+updatedPackageHistory.push({
+cycleId: c,
+packageType: student.packageType || '4 Classes Package (₹6,000)',
+packageAmount: student.packageAmount || 6000,
+limit: limit,
+completedCount: limit,
+startDate: formatDateToYYYYMMDD(cycleStart),
+endDate: formatDateToYYYYMMDD(cycleEnd),
+feeStatus: 'paid',
+remarks: `Past Cycle #${c} recorded via Backlog Builder (${limit} classes)`
+});
+}
+const updatedStudents = students.map(s => {
+if (s.id === backlogStudentId) {
+return {
+...s,
+completedClassesCount: currentCycleCount,
+lastClassDate: formatDateToYYYYMMDD(latestClassDate),
+packageHistory: updatedPackageHistory.length > 0 ? updatedPackageHistory : s.packageHistory || [],
+feeStatus: currentCycleCount === 0 && totalAttendedCount > 0 ? 'pending' : s.feeStatus || 'paid'
+};
+}
+return s;
+});
+syncCentralData(updatedStudents, updatedAttendance);
+setShowBacklogModal(false);
+alert(`✅ Backlog records successfully saved for ${student.name}!\n• Total Classes Attended: ${totalAttendedCount}\n• Completed Cycles: ${completedFullCycles}\n• Current Cycle Count: ${currentCycleCount}/${limit}\n• Data synced to Google Sheets!`);
+};
 const setSingleAttendance = (studentId, status) => {
 if (userRole !== 'owner') {
 alert('🔒 Permission Denied: User Mode is View-Only. Log in with the Owner Passcode to mark attendance.');
@@ -3307,7 +3496,25 @@ gap: '0.35rem'
 }
 }, /*#__PURE__*/React.createElement("i", {
 className: "fa-solid fa-xmark"
-}), " Mark All Absent"))), /*#__PURE__*/React.createElement("div", {
+}), " Mark All Absent"), /*#__PURE__*/React.createElement("button", {
+onClick: () => openBacklogModal(),
+style: {
+padding: '0.5rem 0.85rem',
+borderRadius: 'var(--radius-md)',
+background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)',
+color: 'white',
+border: 'none',
+fontWeight: 700,
+fontSize: '0.775rem',
+display: 'flex',
+alignItems: 'center',
+justifyContent: 'center',
+gap: '0.4rem',
+cursor: 'pointer'
+}
+}, /*#__PURE__*/React.createElement("i", {
+className: "fa-solid fa-calendar-days"
+}), " \uD83D\uDCC5 Backlog Builder"))), /*#__PURE__*/React.createElement("div", {
 className: "filter-bar",
 style: {
 display: 'grid',
@@ -5381,7 +5588,26 @@ padding: '0.35rem 0.6rem',
 background: '#EEF2FF',
 color: 'var(--primary)'
 }
-}, "+ Add Past Package / Cycle")), !studentToEdit.packageHistory || studentToEdit.packageHistory.length === 0 ? /*#__PURE__*/React.createElement("p", {
+}, "+ Add Past Package / Cycle")), /*#__PURE__*/React.createElement("div", {
+style: {
+marginBottom: '0.75rem'
+}
+}, /*#__PURE__*/React.createElement("button", {
+onClick: () => openBacklogModal(studentToEdit.id),
+className: "btn-primary",
+style: {
+width: '100%',
+fontSize: '0.775rem',
+padding: '0.5rem 0.85rem',
+background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)',
+display: 'flex',
+alignItems: 'center',
+justifyContent: 'center',
+gap: '0.4rem'
+}
+}, /*#__PURE__*/React.createElement("i", {
+className: "fa-solid fa-calendar-days"
+}), " \uD83D\uDCC5 Open Interactive Backlog & Past Cycles Calendar Builder")), !studentToEdit.packageHistory || studentToEdit.packageHistory.length === 0 ? /*#__PURE__*/React.createElement("p", {
 style: {
 fontSize: '0.775rem',
 color: 'var(--text-muted)',
@@ -5651,7 +5877,452 @@ className: `mobile-nav-item ${activeTab === 'sheets' ? 'active' : ''}`,
 onClick: () => setActiveTab('sheets')
 }, /*#__PURE__*/React.createElement("i", {
 className: "fa-solid fa-file-excel"
-}), /*#__PURE__*/React.createElement("span", null, "Sheets"))));
+}), /*#__PURE__*/React.createElement("span", null, "Sheets")), showBacklogModal && /*#__PURE__*/React.createElement("div", {
+className: "modal-overlay",
+style: {
+position: 'fixed',
+top: 0,
+left: 0,
+right: 0,
+bottom: 0,
+background: 'rgba(15, 23, 42, 0.65)',
+backdropFilter: 'blur(4px)',
+display: 'flex',
+alignItems: 'center',
+justifyContent: 'center',
+zIndex: 9999,
+padding: '1rem'
+}
+}, /*#__PURE__*/React.createElement("div", {
+className: "card",
+style: {
+width: '100%',
+maxWidth: '880px',
+maxHeight: '92vh',
+display: 'flex',
+flexDirection: 'column',
+background: 'white',
+borderRadius: 'var(--radius-lg)',
+boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+overflow: 'hidden'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+padding: '1.15rem 1.5rem',
+background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)',
+color: 'white',
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'center'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+alignItems: 'center',
+gap: '0.75rem'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+width: 38,
+height: 38,
+borderRadius: '50%',
+background: 'rgba(255,255,255,0.15)',
+display: 'flex',
+alignItems: 'center',
+justifyContent: 'center',
+fontSize: '1.2rem'
+}
+}, "\uD83D\uDCC5"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+style: {
+fontSize: '1.1rem',
+fontWeight: 800,
+margin: 0,
+color: 'white'
+}
+}, "Past Cycle & Backlog Calendar Builder"), /*#__PURE__*/React.createElement("p", {
+style: {
+fontSize: '0.75rem',
+color: '#C7D2FE',
+margin: 0,
+marginTop: '0.15rem'
+}
+}, "Select date ranges (2025\u2013Present), toggle classes held/missed/extra, add song notes & sync to Google Sheets."))), /*#__PURE__*/React.createElement("button", {
+onClick: () => setShowBacklogModal(false),
+style: {
+background: 'rgba(255,255,255,0.15)',
+border: 'none',
+color: 'white',
+width: 30,
+height: 30,
+borderRadius: '50%',
+cursor: 'pointer',
+fontSize: '1.1rem',
+display: 'flex',
+alignItems: 'center',
+justifyContent: 'center'
+}
+}, "\u2715")), /*#__PURE__*/React.createElement("div", {
+style: {
+padding: '1.25rem 1.5rem',
+overflowY: 'auto',
+flex: 1,
+display: 'flex',
+flexDirection: 'column',
+gap: '1.15rem'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'grid',
+gridTemplateColumns: '1.5fr 1fr 1fr',
+gap: '1rem',
+background: '#F8FAFC',
+padding: '0.85rem 1rem',
+borderRadius: 'var(--radius-md)',
+border: '1px solid #E2E8F0'
+}
+}, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+style: {
+fontSize: '0.75rem',
+fontWeight: 700,
+color: 'var(--text-muted)',
+display: 'block',
+marginBottom: '0.25rem'
+}
+}, "Select Student"), /*#__PURE__*/React.createElement("select", {
+value: backlogStudentId,
+onChange: e => {
+setBacklogStudentId(e.target.value);
+generateBacklogDateMap(e.target.value, backlogStartDate, backlogEndDate);
+},
+style: {
+width: '100%',
+padding: '0.45rem 0.6rem',
+borderRadius: 'var(--radius-md)',
+border: '1px solid var(--border-color)',
+fontWeight: 600,
+fontSize: '0.825rem'
+}
+}, students.map(s => /*#__PURE__*/React.createElement("option", {
+key: s.id,
+value: s.id
+}, s.name, " (", s.musicClass || 'Vocal', ") - ", s.packageType || '4 Classes')))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+style: {
+fontSize: '0.75rem',
+fontWeight: 700,
+color: 'var(--text-muted)',
+display: 'block',
+marginBottom: '0.25rem'
+}
+}, "Backlog Start Date"), /*#__PURE__*/React.createElement("input", {
+type: "date",
+value: backlogStartDate,
+onChange: e => {
+setBacklogStartDate(e.target.value);
+generateBacklogDateMap(backlogStudentId, e.target.value, backlogEndDate);
+},
+style: {
+width: '100%',
+padding: '0.45rem 0.6rem',
+borderRadius: 'var(--radius-md)',
+border: '1px solid var(--border-color)',
+fontWeight: 600,
+fontSize: '0.825rem'
+}
+})), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+style: {
+fontSize: '0.75rem',
+fontWeight: 700,
+color: 'var(--text-muted)',
+display: 'block',
+marginBottom: '0.25rem'
+}
+}, "Backlog End Date"), /*#__PURE__*/React.createElement("input", {
+type: "date",
+value: backlogEndDate,
+onChange: e => {
+setBacklogEndDate(e.target.value);
+generateBacklogDateMap(backlogStudentId, backlogStartDate, e.target.value);
+},
+style: {
+width: '100%',
+padding: '0.45rem 0.6rem',
+borderRadius: 'var(--radius-md)',
+border: '1px solid var(--border-color)',
+fontWeight: 600,
+fontSize: '0.825rem'
+}
+}))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+style: {
+fontSize: '0.75rem',
+fontWeight: 700,
+color: 'var(--text-muted)',
+display: 'block',
+marginBottom: '0.35rem'
+}
+}, "\u26A1 Quick Batch Toggle Presets:"), /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+gap: '0.4rem',
+flexWrap: 'wrap'
+}
+}, /*#__PURE__*/React.createElement("button", {
+onClick: () => applyQuickDayPreset('mon_wed_fri'),
+className: "btn-secondary",
+style: {
+fontSize: '0.725rem',
+padding: '0.3rem 0.6rem'
+}
+}, "\uD83D\uDCC5 Mon / Wed / Fri"), /*#__PURE__*/React.createElement("button", {
+onClick: () => applyQuickDayPreset('tue_thu_sat'),
+className: "btn-secondary",
+style: {
+fontSize: '0.725rem',
+padding: '0.3rem 0.6rem'
+}
+}, "\uD83D\uDCC5 Tue / Thu / Sat"), /*#__PURE__*/React.createElement("button", {
+onClick: () => applyQuickDayPreset('sat_sun'),
+className: "btn-secondary",
+style: {
+fontSize: '0.725rem',
+padding: '0.3rem 0.6rem'
+}
+}, "\uD83D\uDCC5 Weekends (Sat / Sun)"), /*#__PURE__*/React.createElement("button", {
+onClick: () => applyQuickDayPreset('all'),
+className: "btn-secondary",
+style: {
+fontSize: '0.725rem',
+padding: '0.3rem 0.6rem',
+background: '#ECFDF5',
+color: '#047857',
+borderColor: '#A7F3D0'
+}
+}, "\u2713 Select All Days"), /*#__PURE__*/React.createElement("button", {
+onClick: () => applyQuickDayPreset('clear'),
+className: "btn-secondary",
+style: {
+fontSize: '0.725rem',
+padding: '0.3rem 0.6rem',
+background: '#FEF2F2',
+color: '#DC2626',
+borderColor: '#FECACA'
+}
+}, "\u2717 Clear All Toggles"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'center',
+marginBottom: '0.4rem'
+}
+}, /*#__PURE__*/React.createElement("h4", {
+style: {
+fontSize: '0.85rem',
+fontWeight: 700,
+margin: 0,
+color: 'var(--text-main)'
+}
+}, "\uD83D\uDCC6 Date List (", getDatesInRange(backlogStartDate, backlogEndDate).length, " Days Total)"), /*#__PURE__*/React.createElement("span", {
+style: {
+fontSize: '0.725rem',
+color: 'var(--text-muted)'
+}
+}, "Click status badges to toggle or edit song notes below")), /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+flexDirection: 'column',
+gap: '0.4rem',
+maxHeight: '300px',
+overflowY: 'auto',
+paddingRight: '0.35rem'
+}
+}, getDatesInRange(backlogStartDate, backlogEndDate).map(dStr => {
+const item = backlogDateMap[dStr] || {
+status: 'none',
+note: ''
+};
+const dateObj = new Date(dStr);
+const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dateObj.getDay()];
+const formattedDisplay = `${dStr} (${dayName})`;
+return /*#__PURE__*/React.createElement("div", {
+key: dStr,
+style: {
+display: 'grid',
+gridTemplateColumns: '1.2fr 2fr 2.5fr',
+gap: '0.6rem',
+alignItems: 'center',
+padding: '0.4rem 0.65rem',
+background: item.status === 'present' ? '#F0FDF4' : item.status === 'extra' ? '#F5F3FF' : item.status === 'absent' ? '#FEF2F2' : '#FFFFFF',
+border: `1px solid ${item.status === 'present' ? '#BBF7D0' : item.status === 'extra' ? '#DDD6FE' : item.status === 'absent' ? '#FECACA' : '#E2E8F0'}`,
+borderRadius: 'var(--radius-md)'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+fontWeight: 700,
+fontSize: '0.775rem',
+color: 'var(--text-main)'
+}
+}, formattedDisplay), /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+gap: '0.2rem'
+}
+}, /*#__PURE__*/React.createElement("button", {
+onClick: () => toggleBacklogDateStatus(dStr, 'present'),
+style: {
+padding: '0.2rem 0.45rem',
+borderRadius: '4px',
+fontSize: '0.675rem',
+fontWeight: 700,
+border: 'none',
+cursor: 'pointer',
+background: item.status === 'present' ? 'var(--present-bg)' : '#F1F5F9',
+color: item.status === 'present' ? 'var(--present-text)' : '#64748B'
+}
+}, "\u2713 Held"), /*#__PURE__*/React.createElement("button", {
+onClick: () => toggleBacklogDateStatus(dStr, 'extra'),
+style: {
+padding: '0.2rem 0.45rem',
+borderRadius: '4px',
+fontSize: '0.675rem',
+fontWeight: 700,
+border: 'none',
+cursor: 'pointer',
+background: item.status === 'extra' ? '#8B5CF6' : '#F1F5F9',
+color: item.status === 'extra' ? 'white' : '#64748B'
+}
+}, "\u2B50 Extra"), /*#__PURE__*/React.createElement("button", {
+onClick: () => toggleBacklogDateStatus(dStr, 'absent'),
+style: {
+padding: '0.2rem 0.45rem',
+borderRadius: '4px',
+fontSize: '0.675rem',
+fontWeight: 700,
+border: 'none',
+cursor: 'pointer',
+background: item.status === 'absent' ? 'var(--absent-bg)' : '#F1F5F9',
+color: item.status === 'absent' ? 'var(--absent-text)' : '#64748B'
+}
+}, "\u2717 Absent"), /*#__PURE__*/React.createElement("button", {
+onClick: () => toggleBacklogDateStatus(dStr, 'none'),
+style: {
+padding: '0.2rem 0.45rem',
+borderRadius: '4px',
+fontSize: '0.675rem',
+fontWeight: 700,
+border: 'none',
+cursor: 'pointer',
+background: item.status === 'none' ? '#CBD5E1' : '#F1F5F9',
+color: item.status === 'none' ? '#1E293B' : '#94A3B8'
+}
+}, "\u2014 Skip")), /*#__PURE__*/React.createElement("input", {
+type: "text",
+placeholder: "Add lesson note / song...",
+value: item.note || '',
+onChange: e => setBacklogDateNote(dStr, e.target.value),
+style: {
+width: '100%',
+padding: '0.25rem 0.45rem',
+borderRadius: '4px',
+border: '1px solid var(--border-color)',
+fontSize: '0.725rem',
+background: 'white'
+}
+}));
+}))), (() => {
+const selStudent = students.find(s => s.id === backlogStudentId);
+const limit = selStudent ? getPackageLimit(selStudent.packageType) : 4;
+let attendedCount = 0;
+let absentCount = 0;
+let extraCount = 0;
+Object.values(backlogDateMap).forEach(item => {
+if (item.status === 'present') attendedCount++;else if (item.status === 'extra') {
+attendedCount++;
+extraCount++;
+} else if (item.status === 'absent') absentCount++;
+});
+const completedCycles = Math.floor(attendedCount / limit);
+const currentCycleProgress = attendedCount % limit;
+return /*#__PURE__*/React.createElement("div", {
+style: {
+background: '#EEF2FF',
+padding: '0.75rem 0.85rem',
+borderRadius: 'var(--radius-md)',
+border: '1px solid #C7D2FE',
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'center',
+flexWrap: 'wrap',
+gap: '0.5rem'
+}
+}, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '0.8rem',
+fontWeight: 800,
+color: '#312E81'
+}
+}, "\uD83D\uDCCA Backlog Summary for ", selStudent?.name || 'Student', ":"), /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '0.725rem',
+color: '#4338CA',
+marginTop: '0.1rem'
+}
+}, "Attended: ", /*#__PURE__*/React.createElement("strong", null, attendedCount, " classes"), " (", extraCount, " extra) | Missed: ", /*#__PURE__*/React.createElement("strong", null, absentCount, " absent"))), /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+gap: '0.4rem',
+alignItems: 'center',
+flexWrap: 'wrap'
+}
+}, /*#__PURE__*/React.createElement("span", {
+className: "badge",
+style: {
+background: '#312E81',
+color: 'white',
+padding: '0.3rem 0.55rem',
+borderRadius: '12px',
+fontSize: '0.725rem',
+fontWeight: 700
+}
+}, "Completed Packages: ", completedCycles, " (", completedCycles * limit, " Classes)"), /*#__PURE__*/React.createElement("span", {
+className: "badge",
+style: {
+background: 'var(--primary)',
+color: 'white',
+padding: '0.3rem 0.55rem',
+borderRadius: '12px',
+fontSize: '0.725rem',
+fontWeight: 700
+}
+}, "Active Cycle: ", currentCycleProgress, " / ", limit, " Classes")));
+})()), /*#__PURE__*/React.createElement("div", {
+style: {
+padding: '0.85rem 1.5rem',
+background: '#F8FAFC',
+borderTop: '1px solid #E2E8F0',
+display: 'flex',
+justifyContent: 'flex-end',
+gap: '0.65rem'
+}
+}, /*#__PURE__*/React.createElement("button", {
+onClick: () => setShowBacklogModal(false),
+className: "btn-secondary",
+style: {
+padding: '0.45rem 0.85rem',
+fontSize: '0.8rem'
+}
+}, "Cancel"), /*#__PURE__*/React.createElement("button", {
+onClick: saveBacklogData,
+className: "btn-primary",
+style: {
+padding: '0.45rem 1.15rem',
+fontSize: '0.8rem',
+background: 'linear-gradient(135deg, #312E81 0%, #4338CA 100%)'
+}
+}, /*#__PURE__*/React.createElement("i", {
+className: "fa-solid fa-cloud-arrow-up",
+style: {
+marginRight: 6
+}
+}), " Save & Sync Backlog to Google Sheets"))))));
 }
 class ErrorBoundary extends React.Component {
 constructor(props) {
