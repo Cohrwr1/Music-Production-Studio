@@ -1530,7 +1530,7 @@ if (contents.studentsHeaders && contents.studentsData) {
 updateSheet(ss, "Current Roster", contents.studentsHeaders, contents.studentsData);
 }
 if (contents.historyHeaders && contents.historyData) {
-updateSheet(ss, "Package & Past Cycles", contents.historyHeaders, contents.historyData);
+updateSheet(ss, "Class Logs & Backlog History", contents.historyHeaders, contents.historyData);
 }
 if (contents.attendanceHeaders && contents.attendanceData) {
 updateSheet(ss, "Daily Attendance", contents.attendanceHeaders, contents.attendanceData);
@@ -1723,17 +1723,23 @@ return;
 try {
 const studentsHeaders = ['Student Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status', 'Total Past Cycles', 'General Remarks'];
 const studentsData = (studs || []).map(s => [s.name || '', formatDateToYYYYMMDD(s.dob), s.age || 0, s.email || '', s.phone || '', formatDateToYYYYMMDD(s.joiningDate), s.musicClass || '', s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${Math.min(s.completedClassesCount || 0, getPackageLimit(s.packageType))} of ${getPackageLimit(s.packageType)}`, formatDateToYYYYMMDD(s.lastClassDate), s.feeStatus || 'paid', (s.packageHistory || []).length, s.remarks || '']);
-const historyHeaders = ['Student Name', 'Cycle #', 'Package Type', 'Package Fee (INR)', 'Classes Completed', 'Cycle Start Date', 'Cycle End Date / Last Class', 'Payment Status', 'Songs Covered / Remarks'];
+const historyHeaders = ['Date', 'Student Name', 'Music Lesson Type', 'Attendance Status', 'Daily Class Note / Song / Remarks'];
 const historyData = [];
-(studs || []).forEach(s => {
-const hist = s.packageHistory || [];
-if (hist.length > 0) {
-hist.forEach(item => {
-historyData.push([s.name, `Cycle #${item.cycleId || 1}`, item.packageType || s.packageType || '4 Classes Package (₹6,000)', item.packageAmount || s.packageAmount || 6000, `${item.completedCount || item.limit || 4} of ${item.limit || 4}`, formatDateToYYYYMMDD(item.startDate || s.joiningDate), formatDateToYYYYMMDD(item.endDate || s.lastClassDate), item.feeStatus || 'paid', item.remarks || 'Past package completed']);
-});
-} else {
-historyData.push([s.name, 'Current Cycle', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${Math.min(s.completedClassesCount || 0, getPackageLimit(s.packageType))} of ${getPackageLimit(s.packageType)}`, formatDateToYYYYMMDD(s.joiningDate), formatDateToYYYYMMDD(s.lastClassDate), s.feeStatus || 'paid', s.remarks || 'Active package in progress']);
+
+// Sort all attendance records chronologically from oldest (2025 backlog) to newest
+const sortedAtts = [...(atts || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+sortedAtts.forEach(rec => {
+const recDate = formatDateToYYYYMMDD(rec.date);
+const statusMap = rec.records || {};
+const remarksMap = rec.remarks || {};
+Object.keys(statusMap).forEach(sId => {
+const stObj = (studs || []).find(s => s.id === sId);
+const status = statusMap[sId] || 'unmarked';
+const remark = remarksMap[sId] || '';
+if (stObj && (status !== 'unmarked' || remark)) {
+historyData.push([recDate, stObj.name, stObj.musicClass || 'Vocal Lessons', status.toUpperCase(), remark || 'Regular Class']);
 }
+});
 });
 const attendanceHeaders = ['Date', 'Student Name', 'Lesson', 'Status'];
 const attendanceData = [];
@@ -2163,6 +2169,36 @@ if (confirm(`Are you sure you want to remove student ${name}?`)) {
 const updated = students.filter(s => s.id !== id);
 syncCentralData(updated, attendance);
 }
+};
+const getStudentDailyRemark = (studentId, dateStr = selectedDate) => {
+const rec = attendance.find(r => r.date === dateStr);
+return rec?.remarks?.[studentId] || '';
+};
+const setStudentDailyRemark = (studentId, remarkText, dateStr = selectedDate) => {
+if (userRole !== 'owner') return;
+const recIndex = attendance.findIndex(r => r.date === dateStr);
+let updated = [...attendance];
+if (recIndex >= 0) {
+const rec = {
+...updated[recIndex]
+};
+rec.remarks = {
+...(rec.remarks || {}),
+[studentId]: remarkText
+};
+updated[recIndex] = rec;
+} else {
+updated.push({
+id: `${dateStr}_All`,
+date: dateStr,
+className: 'All',
+records: {},
+remarks: {
+[studentId]: remarkText
+}
+});
+}
+syncCentralData(students, updated);
 };
 const getStudentStatus = studentId => {
 const rec = attendance.find(r => r.date === selectedDate);
@@ -3575,7 +3611,33 @@ fontSize: '0.75rem',
 fontWeight: 700,
 color: 'var(--text-main)'
 }
-}, "Payment:"), renderPaymentButtonGroup(student)))), /*#__PURE__*/React.createElement("div", {
+}, "Payment:"), renderPaymentButtonGroup(student))), /*#__PURE__*/React.createElement("div", {
+style: {
+marginTop: '0.2rem'
+}
+}, /*#__PURE__*/React.createElement("label", {
+style: {
+fontSize: '0.725rem',
+fontWeight: 700,
+color: 'var(--text-muted)',
+display: 'block',
+marginBottom: '0.15rem'
+}
+}, "\uD83D\uDCDD Daily Class Note / Song (", selectedDate, "):"), /*#__PURE__*/React.createElement("input", {
+type: "text",
+placeholder: `Add note for ${selectedDate} (e.g. Song: Hallelujah)...`,
+value: getStudentDailyRemark(student.id, selectedDate),
+onChange: e => setStudentDailyRemark(student.id, e.target.value, selectedDate),
+disabled: userRole !== 'owner',
+style: {
+width: '100%',
+padding: '0.45rem 0.6rem',
+borderRadius: 'var(--radius-md)',
+border: '1px solid var(--border-color)',
+fontSize: '0.775rem',
+background: 'white'
+}
+}))), /*#__PURE__*/React.createElement("div", {
 style: {
 display: 'flex',
 flexDirection: 'column',
