@@ -1527,17 +1527,20 @@ if (e && e.parameter && e.parameter.payload) {
 try {
 var contents = JSON.parse(e.parameter.payload);
 if (contents.studentsHeaders && contents.studentsData) {
-updateSheet(ss, "Students", contents.studentsHeaders, contents.studentsData);
+updateSheet(ss, "Current Roster", contents.studentsHeaders, contents.studentsData);
+}
+if (contents.historyHeaders && contents.historyData) {
+updateSheet(ss, "Package & Past Cycles", contents.historyHeaders, contents.historyData);
 }
 if (contents.attendanceHeaders && contents.attendanceData) {
-updateSheet(ss, "Attendance", contents.attendanceHeaders, contents.attendanceData);
+updateSheet(ss, "Daily Attendance", contents.attendanceHeaders, contents.attendanceData);
 }
 return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Sheet updated successfully!" })).setMimeType(ContentService.MimeType.JSON);
 } catch(err) {
 return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
 }
 }
-var sheet = ss.getSheetByName("Students") || ss.getSheets()[0];
+var sheet = ss.getSheetByName("Current Roster") || ss.getSheetByName("Students") || ss.getSheets()[0];
 var data = sheet.getDataRange().getValues();
 return ContentService.createTextOutput(JSON.stringify({ status: "success", data: data })).setMimeType(ContentService.MimeType.JSON);
 }
@@ -1551,7 +1554,10 @@ var sheet = ss.getSheetByName(sheetName);
 if (!sheet) { sheet = ss.insertSheet(sheetName); }
 sheet.clear();
 sheet.appendRow(headers);
-if (rows && rows.length > 0) sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+if (rows && rows.length > 0) {
+sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#6366F1").setFontColor("#FFFFFF");
+}
 }`;
 const parseCSVRows = text => {
 const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
@@ -1715,20 +1721,34 @@ if (!url || !url.trim() || url.includes('docs.google.com/spreadsheets/d/')) {
 return;
 }
 try {
-const studentsHeaders = ['Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status'];
-const studentsData = (studs || []).map(s => [s.name || '', s.dob || '', s.age || 0, s.email || '', s.phone || '', s.joiningDate || '', s.musicClass || '', s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${s.completedClassesCount || 0} of ${getPackageLimit(s.packageType)}`, s.lastClassDate || 'N/A', s.feeStatus || 'paid']);
+const studentsHeaders = ['Student Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status', 'Total Past Cycles', 'General Remarks'];
+const studentsData = (studs || []).map(s => [s.name || '', formatDateToYYYYMMDD(s.dob), s.age || 0, s.email || '', s.phone || '', formatDateToYYYYMMDD(s.joiningDate), s.musicClass || '', s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${Math.min(s.completedClassesCount || 0, getPackageLimit(s.packageType))} of ${getPackageLimit(s.packageType)}`, formatDateToYYYYMMDD(s.lastClassDate), s.feeStatus || 'paid', (s.packageHistory || []).length, s.remarks || '']);
+const historyHeaders = ['Student Name', 'Cycle #', 'Package Type', 'Package Fee (INR)', 'Classes Completed', 'Cycle Start Date', 'Cycle End Date / Last Class', 'Payment Status', 'Songs Covered / Remarks'];
+const historyData = [];
+(studs || []).forEach(s => {
+const hist = s.packageHistory || [];
+if (hist.length > 0) {
+hist.forEach(item => {
+historyData.push([s.name, `Cycle #${item.cycleId || 1}`, item.packageType || s.packageType || '4 Classes Package (₹6,000)', item.packageAmount || s.packageAmount || 6000, `${item.completedCount || item.limit || 4} of ${item.limit || 4}`, formatDateToYYYYMMDD(item.startDate || s.joiningDate), formatDateToYYYYMMDD(item.endDate || s.lastClassDate), item.feeStatus || 'paid', item.remarks || 'Past package completed']);
+});
+} else {
+historyData.push([s.name, 'Current Cycle', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${Math.min(s.completedClassesCount || 0, getPackageLimit(s.packageType))} of ${getPackageLimit(s.packageType)}`, formatDateToYYYYMMDD(s.joiningDate), formatDateToYYYYMMDD(s.lastClassDate), s.feeStatus || 'paid', s.remarks || 'Active package in progress']);
+}
+});
 const attendanceHeaders = ['Date', 'Student Name', 'Lesson', 'Status'];
 const attendanceData = [];
 (atts || []).forEach(rec => {
 Object.entries(rec.records || {}).forEach(([sId, st]) => {
 const stObj = (studs || []).find(s => s.id === sId);
-attendanceData.push([rec.date || '', stObj ? stObj.name : sId, stObj ? stObj.musicClass : '', st || '']);
+attendanceData.push([formatDateToYYYYMMDD(rec.date), stObj ? stObj.name : sId, stObj ? stObj.musicClass : '', st || '']);
 });
 });
 const payload = {
 type: 'SYNC_ALL',
 studentsHeaders,
 studentsData,
+historyHeaders,
+historyData,
 attendanceHeaders,
 attendanceData
 };
@@ -2113,11 +2133,20 @@ const updatedAge = calculateAge(studentToEdit.dob);
 const limit = getPackageLimit(studentToEdit.packageType);
 const count = Number(studentToEdit.completedClassesCount) || 0;
 const isExpired = count >= limit;
+let finalCount = count;
+let finalStatus = studentToEdit.feeStatus;
+
+// If Owner marked status PAID when classes were completed, reset for new cycle
+if (finalStatus === 'paid' && count >= limit) {
+finalCount = 0; // Reset count to 0 for renewed package cycle!
+} else if (isExpired && finalStatus !== 'paid') {
+finalStatus = 'pending';
+}
 const finalStudent = {
 ...studentToEdit,
 age: updatedAge,
-completedClassesCount: count,
-feeStatus: isExpired ? 'pending' : studentToEdit.feeStatus
+completedClassesCount: Math.min(finalCount, limit),
+feeStatus: finalStatus
 };
 const updatedList = students.map(s => s.id === studentToEdit.id ? finalStudent : s);
 syncCentralData(updatedList, attendance);
@@ -2170,23 +2199,49 @@ records: {
 });
 }
 
-// Auto Class Counter & Auto Status Expiry (Switching to PENDING when limit is reached)
+// Auto Class Counter & Auto Status Expiry (Capped at Package Limit, No 5/4!)
 let updatedStudents = students;
 if (isNewMark) {
 updatedStudents = students.map(s => {
 if (s.id === studentId) {
 const limit = getPackageLimit(s.packageType);
 const currentCount = s.completedClassesCount || 0;
-const newCount = currentCount + 1;
-const isExpiredNow = newCount >= limit;
-if (isExpiredNow) {
-alert(`⚠️ ${s.name} has completed all ${limit} classes in their ${s.packageType || 'package'}! Payment status is now automatically set to PENDING for package renewal.`);
+let newCount;
+let isExpiredNow = false;
+let updatedHistory = s.packageHistory || [];
+
+// If previous cycle was already completed (e.g. at 4/4 or 12/12)
+if (currentCount >= limit) {
+// Starting a NEW package cycle!
+newCount = 1;
+alert(`🎉 Starting a NEW package cycle for ${s.name} (Class 1 of ${limit})!`);
+} else {
+newCount = currentCount + 1;
+if (newCount >= limit) {
+isExpiredNow = true;
+alert(`⚠️ ${s.name} has completed all ${limit} classes in their ${s.packageType || 'package'}! Payment status is set to PENDING for package renewal.`);
+
+// Auto-archive completed cycle
+const cycleId = (updatedHistory.length || 0) + 1;
+updatedHistory = [...updatedHistory, {
+cycleId: cycleId,
+packageType: s.packageType || '4 Classes Package (₹6,000)',
+packageAmount: s.packageAmount || 6000,
+completedCount: limit,
+limit: limit,
+startDate: s.joiningDate || formatDateToYYYYMMDD(selectedDate),
+endDate: formatDateToYYYYMMDD(selectedDate),
+feeStatus: 'pending',
+remarks: `Cycle #${cycleId} completed on ${formatDateToYYYYMMDD(selectedDate)}`
+}];
+}
 }
 return {
 ...s,
-completedClassesCount: newCount,
+completedClassesCount: Math.min(newCount, limit),
 lastClassDate: formatDateToYYYYMMDD(selectedDate),
-feeStatus: isExpiredNow ? 'pending' : s.feeStatus
+feeStatus: isExpiredNow ? 'pending' : s.feeStatus,
+packageHistory: updatedHistory
 };
 }
 return s;
@@ -2433,8 +2488,8 @@ if (students.length === 0) {
 alert('No student records to copy!');
 return;
 }
-const headers = ['Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status'];
-const rows = students.map(s => [s.name, s.dob, s.age, s.email, s.phone, s.joiningDate, s.musicClass, s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${s.completedClassesCount || 0} of ${getPackageLimit(s.packageType)}`, s.lastClassDate || 'N/A', s.feeStatus]);
+const headers = ['Student Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status', 'Total Past Cycles', 'General Remarks'];
+const rows = students.map(s => [s.name, formatDateToYYYYMMDD(s.dob), s.age, s.email, s.phone, formatDateToYYYYMMDD(s.joiningDate), s.musicClass, s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${Math.min(s.completedClassesCount || 0, getPackageLimit(s.packageType))} of ${getPackageLimit(s.packageType)}`, formatDateToYYYYMMDD(s.lastClassDate), s.feeStatus, (s.packageHistory || []).length, s.remarks || '']);
 const tsvText = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
 if (navigator.clipboard && navigator.clipboard.writeText) {
 navigator.clipboard.writeText(tsvText).then(() => {
@@ -2447,8 +2502,8 @@ handleExportCSV();
 }
 };
 const handleExportCSV = () => {
-const headers = ['Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status'];
-const rows = students.map(s => [s.name, s.dob, s.age, s.email, s.phone, s.joiningDate, s.musicClass, s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${s.completedClassesCount || 0} of ${getPackageLimit(s.packageType)}`, s.lastClassDate || 'N/A', s.feeStatus]);
+const headers = ['Student Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status', 'Total Past Cycles', 'General Remarks'];
+const rows = students.map(s => [s.name, formatDateToYYYYMMDD(s.dob), s.age, s.email, s.phone, formatDateToYYYYMMDD(s.joiningDate), s.musicClass, s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${Math.min(s.completedClassesCount || 0, getPackageLimit(s.packageType))} of ${getPackageLimit(s.packageType)}`, formatDateToYYYYMMDD(s.lastClassDate), s.feeStatus, (s.packageHistory || []).length, s.remarks || '']);
 const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n');
 const blob = new Blob([csvContent], {
 type: 'text/csv;charset=utf-8;'
@@ -5190,11 +5245,128 @@ border: '1px solid var(--border-color)'
 }
 }, /*#__PURE__*/React.createElement("option", {
 value: "paid"
-}, "Paid"), /*#__PURE__*/React.createElement("option", {
+}, "Paid (Renew Cycle)"), /*#__PURE__*/React.createElement("option", {
 value: "pending"
 }, "Pending"), /*#__PURE__*/React.createElement("option", {
 value: "overdue"
-}, "Overdue"))))), /*#__PURE__*/React.createElement("div", {
+}, "Overdue")))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+style: {
+fontSize: '0.8rem',
+fontWeight: 700,
+display: 'block',
+marginBottom: '0.2rem'
+}
+}, "Songs Covered / Lesson Remarks / Notes"), /*#__PURE__*/React.createElement("input", {
+type: "text",
+placeholder: "e.g. Songs: Mary Ann, Hallelujah | Paid \u20B96,000 via UPI",
+value: studentToEdit.remarks || '',
+onChange: e => setStudentToEdit({
+...studentToEdit,
+remarks: e.target.value
+}),
+style: {
+width: '100%',
+padding: '0.65rem',
+borderRadius: 'var(--radius-md)',
+border: '1px solid var(--border-color)'
+}
+})), /*#__PURE__*/React.createElement("div", {
+style: {
+background: '#F8FAFC',
+border: '1px solid #E2E8F0',
+padding: '0.85rem',
+borderRadius: 'var(--radius-md)',
+marginTop: '0.5rem'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'center',
+marginBottom: '0.5rem'
+}
+}, /*#__PURE__*/React.createElement("h4", {
+style: {
+fontSize: '0.85rem',
+fontWeight: 800,
+color: 'var(--text-main)'
+}
+}, "\uD83D\uDCDC Past Package Cycles & Previous Details"), /*#__PURE__*/React.createElement("button", {
+type: "button",
+onClick: () => {
+const past = studentToEdit.packageHistory || [];
+const newCycleId = past.length + 1;
+const newCycle = {
+cycleId: newCycleId,
+packageType: studentToEdit.packageType || '4 Classes Package (₹6,000)',
+packageAmount: studentToEdit.packageAmount || 6000,
+completedCount: getPackageLimit(studentToEdit.packageType),
+limit: getPackageLimit(studentToEdit.packageType),
+startDate: studentToEdit.joiningDate || '2026-01-01',
+endDate: formatDateToYYYYMMDD(new Date()),
+feeStatus: 'paid',
+remarks: 'Previous package completed'
+};
+setStudentToEdit({
+...studentToEdit,
+packageHistory: [...past, newCycle]
+});
+},
+className: "btn-secondary",
+style: {
+fontSize: '0.725rem',
+padding: '0.35rem 0.6rem',
+background: '#EEF2FF',
+color: 'var(--primary)'
+}
+}, "+ Add Past Package / Cycle")), !studentToEdit.packageHistory || studentToEdit.packageHistory.length === 0 ? /*#__PURE__*/React.createElement("p", {
+style: {
+fontSize: '0.775rem',
+color: 'var(--text-muted)',
+fontStyle: 'italic'
+}
+}, "No past package cycles recorded yet. Completed packages will automatically archive here!") : /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+flexDirection: 'column',
+gap: '0.5rem',
+maxHeight: '160px',
+overflowY: 'auto'
+}
+}, studentToEdit.packageHistory.map((item, idx) => /*#__PURE__*/React.createElement("div", {
+key: idx,
+style: {
+background: '#FFFFFF',
+border: '1px solid #E2E8F0',
+padding: '0.55rem',
+borderRadius: '6px',
+fontSize: '0.775rem',
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'center'
+}
+}, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "Cycle #", item.cycleId || idx + 1, ":"), " ", item.packageType || '4 Classes', " (", item.completedCount || 4, "/", item.limit || 4, " classes)", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
+style: {
+color: 'var(--text-muted)'
+}
+}, "\uD83D\uDCC5 ", item.startDate, " to ", item.endDate, " | ", item.remarks || 'Completed')), /*#__PURE__*/React.createElement("button", {
+type: "button",
+onClick: () => {
+const updatedHist = studentToEdit.packageHistory.filter((_, i) => i !== idx);
+setStudentToEdit({
+...studentToEdit,
+packageHistory: updatedHist
+});
+},
+style: {
+color: '#EF4444',
+border: 'none',
+background: 'none',
+cursor: 'pointer',
+fontSize: '0.9rem'
+},
+title: "Remove this past record"
+}, "\u2715")))))), /*#__PURE__*/React.createElement("div", {
 className: "modal-footer"
 }, /*#__PURE__*/React.createElement("button", {
 type: "button",
