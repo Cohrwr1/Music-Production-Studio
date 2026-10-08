@@ -1535,6 +1535,9 @@ updateSheet(ss, "Class Logs & Backlog History", contents.historyHeaders, content
 if (contents.attendanceHeaders && contents.attendanceData) {
 updateSheet(ss, "Daily Attendance", contents.attendanceHeaders, contents.attendanceData);
 }
+if (contents.backlogHeaders && contents.backlogData) {
+updateSheet(ss, "Backlog Records", contents.backlogHeaders, contents.backlogData);
+}
 return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Sheet updated successfully!" })).setMimeType(ContentService.MimeType.JSON);
 } catch(err) {
 return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
@@ -1590,6 +1593,10 @@ function App() {
 const [ownerPasscode, setOwnerPasscode] = useState(() => localStorage.getItem('harmony_owner_passcode') || localStorage.getItem('harmony_master_passcode') || '2026');
 const [userPasscode, setUserPasscode] = useState(() => localStorage.getItem('harmony_user_passcode') || '1234');
 const [isUnlocked, setIsUnlocked] = useState(() => sessionStorage.getItem('harmony_is_unlocked') === 'true');
+const [userModeStudentSearch, setUserModeStudentSearch] = useState('');
+const [selectedUserModeStudent, setSelectedUserModeStudent] = useState(null);
+const [backlogActiveTab, setBacklogActiveTab] = useState('logger');
+const [backlogFeeStatus, setBacklogFeeStatus] = useState('paid');
 const [userRole, setUserRole] = useState(() => sessionStorage.getItem('harmony_user_role') || 'owner');
 const [enteredPin, setEnteredPin] = useState('');
 const [pinError, setPinError] = useState('');
@@ -1745,6 +1752,18 @@ if (stObj && (status !== 'unmarked' || remark)) {
 historyData.push([recDate, stObj.name, stObj.musicClass || 'Vocal Lessons', status.toUpperCase(), remark || 'Regular Class']);
 }
 });
+});
+const backlogHeaders = ['Student Name', 'Backlog Cycle #', 'Package Type', 'Package Fee (INR)', 'Fee Payment Status', 'Classes Completed', 'Cycle Start Date', 'Cycle End Date / Last Class', 'Cycle Notes / Remarks'];
+const backlogData = [];
+(studs || []).forEach(s => {
+const hist = s.packageHistory || [];
+if (hist.length > 0) {
+hist.forEach(item => {
+backlogData.push([s.name || '', `Cycle #${item.cycleId || 1}`, item.packageType || s.packageType || '4 Classes Package (₹6,000)', item.packageAmount || s.packageAmount || 6000, (item.feeStatus || 'paid').toUpperCase(), `${item.completedCount || item.limit || 4} of ${item.limit || 4}`, formatDateToYYYYMMDD(item.startDate || s.joiningDate), formatDateToYYYYMMDD(item.endDate || s.lastClassDate), item.remarks || 'Past package completed']);
+});
+} else {
+backlogData.push([s.name || '', 'Current Active Cycle', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, (s.feeStatus || 'paid').toUpperCase(), `${Math.min(s.completedClassesCount || 0, getPackageLimit(s.packageType))} of ${getPackageLimit(s.packageType)}`, formatDateToYYYYMMDD(s.joiningDate), formatDateToYYYYMMDD(s.lastClassDate), s.remarks || 'Current active package']);
+}
 });
 const attendanceHeaders = ['Date', 'Student Name', 'Lesson', 'Status'];
 const attendanceData = [];
@@ -2211,6 +2230,44 @@ return rec?.records?.[studentId] || 'unmarked';
 };
 
 // Automated Class-Count Expiry Logic on Attendance Marking (Owner Only)
+const deleteBacklogCycle = (studentId, cycleIdx) => {
+if (userRole !== 'owner') return;
+if (!confirm('Are you sure you want to delete this backlog package cycle?')) return;
+const updatedStudents = students.map(s => {
+if (s.id === studentId) {
+const hist = s.packageHistory || [];
+const newHist = hist.filter((_, idx) => idx !== cycleIdx);
+return {
+...s,
+packageHistory: newHist
+};
+}
+return s;
+});
+syncCentralData(updatedStudents, attendance);
+alert('🗑️ Backlog record deleted successfully!');
+};
+const toggleBacklogFeeStatus = (studentId, cycleIdx) => {
+if (userRole !== 'owner') return;
+const updatedStudents = students.map(s => {
+if (s.id === studentId) {
+const hist = [...(s.packageHistory || [])];
+if (hist[cycleIdx]) {
+const currentStatus = hist[cycleIdx].feeStatus || 'paid';
+hist[cycleIdx] = {
+...hist[cycleIdx],
+feeStatus: currentStatus === 'paid' ? 'pending' : 'paid'
+};
+}
+return {
+...s,
+packageHistory: hist
+};
+}
+return s;
+});
+syncCentralData(updatedStudents, attendance);
+};
 const openBacklogModal = studentId => {
 if (userRole !== 'owner') {
 alert('🔒 User Mode is View-Only. Log in with Owner Passcode (2026) to add or edit past backlog dates.');
@@ -2375,7 +2432,7 @@ limit: limit,
 completedCount: limit,
 startDate: formatDateToYYYYMMDD(cycleStart),
 endDate: formatDateToYYYYMMDD(cycleEnd),
-feeStatus: 'paid',
+feeStatus: backlogFeeStatus || 'paid',
 remarks: `Past Cycle #${c} recorded via Backlog Builder (${limit} classes)`
 });
 }
@@ -2749,12 +2806,12 @@ return matchesLesson && matchesSearch && matchesDayOfWeek;
 });
 let presentCount = 0,
 absentCount = 0,
-extraCount = 0;
+leaveCount = 0;
 filteredStudents.forEach(s => {
 const st = getStudentStatus(s.id);
 if (st === 'present') presentCount++;
 if (st === 'absent') absentCount++;
-if (st === 'extra') extraCount++;
+if (st === 'leave') leaveCount++;
 });
 const renderPaymentButtonGroup = student => {
 const status = student.feeStatus;
@@ -2989,6 +3046,524 @@ color: '#64748B',
 marginTop: '0.25rem'
 }
 }, "\uD83D\uDD12 Secure Portal \u2022 Enter your assigned security passcode above"))));
+}
+
+// 🔒 STUDENT SELF-SERVICE PORTAL (USER MODE PASSCODE 1234)
+if (userRole === 'user') {
+return /*#__PURE__*/React.createElement("div", {
+style: {
+minHeight: '100vh',
+background: 'var(--bg-app)',
+padding: '1.5rem 1rem'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+maxWidth: '900px',
+margin: '0 auto',
+display: 'flex',
+flexDirection: 'column',
+gap: '1.25rem'
+}
+}, /*#__PURE__*/React.createElement("div", {
+className: "card",
+style: {
+background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)',
+color: 'white',
+padding: '1.25rem 1.5rem',
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'center',
+flexWrap: 'wrap',
+gap: '1rem',
+borderRadius: 'var(--radius-lg)'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+alignItems: 'center',
+gap: '0.85rem'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+width: 44,
+height: 44,
+borderRadius: '50%',
+background: 'rgba(255,255,255,0.15)',
+display: 'flex',
+alignItems: 'center',
+justifyContent: 'center',
+fontSize: '1.35rem'
+}
+}, "\uD83C\uDFB5"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+style: {
+fontSize: '1.25rem',
+fontWeight: 800,
+margin: 0,
+color: 'white'
+}
+}, "Harmony Music Studio"), /*#__PURE__*/React.createElement("p", {
+style: {
+fontSize: '0.775rem',
+color: '#C7D2FE',
+margin: 0,
+marginTop: '0.15rem'
+}
+}, "Student Portal \u2022 Private View-Only Access"))), /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+gap: '0.6rem',
+alignItems: 'center'
+}
+}, /*#__PURE__*/React.createElement("button", {
+onClick: () => handleFetchFromGoogleSheet(),
+className: "btn-secondary",
+style: {
+background: 'rgba(255,255,255,0.15)',
+color: 'white',
+border: '1px solid rgba(255,255,255,0.3)',
+fontSize: '0.775rem',
+padding: '0.45rem 0.75rem'
+}
+}, /*#__PURE__*/React.createElement("i", {
+className: "fa-solid fa-rotate",
+style: {
+marginRight: 6
+}
+}), " Sync Live Data"), /*#__PURE__*/React.createElement("button", {
+onClick: () => {
+const pin = prompt('Enter Owner Passcode to switch to Owner Mode:');
+if (pin === (ownerPasscode || '2026')) {
+setUserRole('owner');
+sessionStorage.setItem('harmony_user_role', 'owner');
+alert('Unlocked Owner Mode!');
+} else if (pin) {
+alert('Incorrect passcode!');
+}
+},
+style: {
+background: '#4F46E5',
+color: 'white',
+border: 'none',
+padding: '0.45rem 0.75rem',
+borderRadius: 'var(--radius-md)',
+fontWeight: 700,
+fontSize: '0.775rem',
+cursor: 'pointer'
+}
+}, "\uD83D\uDD12 Admin Login"))), /*#__PURE__*/React.createElement("div", {
+className: "card",
+style: {
+padding: '1.25rem 1.5rem',
+display: 'flex',
+flexDirection: 'column',
+gap: '0.85rem'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+alignItems: 'center',
+gap: '0.65rem'
+}
+}, /*#__PURE__*/React.createElement("i", {
+className: "fa-solid fa-user-shield",
+style: {
+fontSize: '1.2rem',
+color: 'var(--primary)'
+}
+}), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+style: {
+fontSize: '1.05rem',
+fontWeight: 800,
+margin: 0
+}
+}, "Student Record Lookup"), /*#__PURE__*/React.createElement("p", {
+style: {
+fontSize: '0.775rem',
+color: 'var(--text-muted)',
+margin: 0
+}
+}, "Enter your registered name to access your private class records."))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+style: {
+fontSize: '0.75rem',
+fontWeight: 700,
+color: 'var(--text-muted)',
+display: 'block',
+marginBottom: '0.25rem'
+}
+}, "Type Your Name (First Name or Full Name):"), /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+gap: '0.5rem'
+}
+}, /*#__PURE__*/React.createElement("input", {
+type: "text",
+placeholder: "e.g. Aanish or Aanish Parmar...",
+value: userModeStudentSearch,
+onChange: e => {
+setUserModeStudentSearch(e.target.value);
+setSelectedUserModeStudent(null);
+},
+style: {
+flex: 1,
+padding: '0.55rem 0.75rem',
+borderRadius: 'var(--radius-md)',
+border: '1px solid var(--border-color)',
+fontSize: '0.875rem',
+fontWeight: 600
+}
+}), userModeStudentSearch && /*#__PURE__*/React.createElement("button", {
+onClick: () => {
+setUserModeStudentSearch('');
+setSelectedUserModeStudent(null);
+},
+className: "btn-secondary",
+style: {
+padding: '0.55rem 0.75rem',
+fontSize: '0.8rem'
+}
+}, "Clear"))), userModeStudentSearch.trim() && !selectedUserModeStudent && /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+flexDirection: 'column',
+gap: '0.4rem',
+marginTop: '0.35rem'
+}
+}, (() => {
+const matches = students.filter(s => s.name.toLowerCase().includes(userModeStudentSearch.toLowerCase().trim()));
+if (matches.length === 0) {
+return /*#__PURE__*/React.createElement("div", {
+style: {
+padding: '0.85rem',
+background: '#FEF2F2',
+border: '1px solid #FECACA',
+borderRadius: 'var(--radius-md)',
+color: '#991B1B',
+fontSize: '0.8rem',
+textAlign: 'center'
+}
+}, "No student record found matching \"", userModeStudentSearch, "\". Please check spelling or contact studio admin.");
+}
+return /*#__PURE__*/React.createElement("div", {
+style: {
+background: '#F8FAFC',
+border: '1px solid #E2E8F0',
+borderRadius: 'var(--radius-md)',
+padding: '0.45rem'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '0.725rem',
+fontWeight: 700,
+color: 'var(--text-muted)',
+padding: '0.2rem 0.4rem'
+}
+}, "Select your profile:"), matches.map(s => /*#__PURE__*/React.createElement("button", {
+key: s.id,
+onClick: () => setSelectedUserModeStudent(s),
+style: {
+width: '100%',
+textAlign: 'left',
+padding: '0.55rem 0.75rem',
+background: 'white',
+border: '1px solid #E2E8F0',
+borderRadius: 'var(--radius-md)',
+marginBottom: '0.25rem',
+cursor: 'pointer',
+fontWeight: 700,
+fontSize: '0.85rem',
+color: 'var(--text-main)',
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'center'
+}
+}, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDC64 ", s.name, " (", s.musicClass || 'Vocal', ")"), /*#__PURE__*/React.createElement("span", {
+style: {
+fontSize: '0.75rem',
+color: 'var(--primary)',
+fontWeight: 800
+}
+}, "View Profile \u2794"))));
+})())), selectedUserModeStudent ? /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+flexDirection: 'column',
+gap: '1.15rem'
+}
+}, /*#__PURE__*/React.createElement("div", {
+className: "card",
+style: {
+borderTop: '4px solid var(--primary)'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'flex-start',
+flexWrap: 'wrap',
+gap: '0.85rem'
+}
+}, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+className: "badge",
+style: {
+background: '#EEF2FF',
+color: 'var(--primary)',
+marginBottom: '0.4rem',
+display: 'inline-block'
+}
+}, selectedUserModeStudent.musicClass || 'Music Lessons'), /*#__PURE__*/React.createElement("h2", {
+style: {
+fontSize: '1.35rem',
+fontWeight: 800,
+margin: 0,
+color: 'var(--text-main)'
+}
+}, selectedUserModeStudent.name), /*#__PURE__*/React.createElement("p", {
+style: {
+fontSize: '0.8rem',
+color: 'var(--text-muted)',
+margin: 0,
+marginTop: '0.2rem'
+}
+}, "Joining Date: ", /*#__PURE__*/React.createElement("strong", null, formatDateToYYYYMMDD(selectedUserModeStudent.joiningDate)), " | Phone: ", /*#__PURE__*/React.createElement("strong", null, selectedUserModeStudent.phone || 'N/A'))), /*#__PURE__*/React.createElement("button", {
+onClick: () => setSelectedUserModeStudent(null),
+className: "btn-secondary",
+style: {
+fontSize: '0.775rem',
+padding: '0.4rem 0.65rem'
+}
+}, "\uD83D\uDD04 Search Different Name")), /*#__PURE__*/React.createElement("div", {
+style: {
+gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+display: 'grid',
+gap: '0.85rem',
+marginTop: '1.15rem'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+background: '#F8FAFC',
+padding: '0.85rem',
+borderRadius: 'var(--radius-md)',
+border: '1px solid #E2E8F0'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '0.725rem',
+color: 'var(--text-muted)',
+fontWeight: 700
+}
+}, "Active Package"), /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '1rem',
+fontWeight: 800,
+color: 'var(--primary)',
+marginTop: '0.15rem'
+}
+}, selectedUserModeStudent.packageType || '4 Classes Package'), /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '0.725rem',
+color: 'var(--text-muted)',
+marginTop: '0.1rem'
+}
+}, "Fee: \u20B9", (selectedUserModeStudent.packageAmount || 6000).toLocaleString('en-IN'))), /*#__PURE__*/React.createElement("div", {
+style: {
+background: '#F0FDF4',
+padding: '0.85rem',
+borderRadius: 'var(--radius-md)',
+border: '1px solid #BBF7D0'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '0.725rem',
+color: '#166534',
+fontWeight: 700
+}
+}, "Class Attendance Progress"), /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '1.15rem',
+fontWeight: 800,
+color: '#15803D',
+marginTop: '0.15rem'
+}
+}, Math.min(selectedUserModeStudent.completedClassesCount || 0, getPackageLimit(selectedUserModeStudent.packageType)), " of ", getPackageLimit(selectedUserModeStudent.packageType), " Classes"), /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '0.725rem',
+color: '#166534',
+marginTop: '0.1rem'
+}
+}, "Last Class: ", /*#__PURE__*/React.createElement("strong", null, formatDateToYYYYMMDD(selectedUserModeStudent.lastClassDate) || 'None'))), /*#__PURE__*/React.createElement("div", {
+style: {
+background: selectedUserModeStudent.feeStatus === 'pending' ? '#FEF2F2' : '#EFF6FF',
+padding: '0.85rem',
+borderRadius: 'var(--radius-md)',
+border: `1px solid ${selectedUserModeStudent.feeStatus === 'pending' ? '#FECACA' : '#BFDBFE'}`
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '0.725rem',
+color: selectedUserModeStudent.feeStatus === 'pending' ? '#991B1B' : '#1E40AF',
+fontWeight: 700
+}
+}, "Tuition Fee Status"), /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '1rem',
+fontWeight: 800,
+color: selectedUserModeStudent.feeStatus === 'pending' ? '#DC2626' : '#2563EB',
+marginTop: '0.15rem',
+textTransform: 'uppercase'
+}
+}, selectedUserModeStudent.feeStatus === 'pending' ? '⚠️ Fee Payment Pending' : '✓ Fee Paid')))), /*#__PURE__*/React.createElement("div", {
+className: "card"
+}, /*#__PURE__*/React.createElement("h3", {
+style: {
+fontSize: '1.05rem',
+fontWeight: 800,
+marginBottom: '0.65rem',
+display: 'flex',
+alignItems: 'center',
+gap: '0.4rem'
+}
+}, "\uD83D\uDCDD Daily Lesson Notes & Songs Covered"), (() => {
+const studentNotes = [];
+attendance.forEach(rec => {
+const note = rec.remarks?.[selectedUserModeStudent.id];
+const st = rec.records?.[selectedUserModeStudent.id];
+if (note || st && st !== 'unmarked') {
+studentNotes.push({
+date: rec.date,
+status: st,
+note: note || 'Class Conducted'
+});
+}
+});
+studentNotes.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+if (studentNotes.length === 0) {
+return /*#__PURE__*/React.createElement("p", {
+style: {
+fontSize: '0.8rem',
+color: 'var(--text-muted)',
+fontStyle: 'italic',
+margin: 0
+}
+}, "No individual class notes or song entries logged yet.");
+}
+return /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+flexDirection: 'column',
+gap: '0.45rem',
+maxHeight: '220px',
+overflowY: 'auto'
+}
+}, studentNotes.map((item, idx) => /*#__PURE__*/React.createElement("div", {
+key: idx,
+style: {
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'center',
+padding: '0.55rem 0.75rem',
+background: '#F8FAFC',
+border: '1px solid #E2E8F0',
+borderRadius: 'var(--radius-md)',
+fontSize: '0.8rem'
+}
+}, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", {
+style: {
+color: 'var(--text-main)'
+}
+}, item.date), ": ", item.note), /*#__PURE__*/React.createElement("span", {
+className: "badge",
+style: {
+background: item.status === 'present' ? 'var(--present-bg)' : item.status === 'leave' ? '#FEF3C7' : '#FEF2F2',
+color: item.status === 'present' ? 'var(--present-text)' : item.status === 'leave' ? '#D97706' : '#DC2626',
+fontSize: '0.675rem'
+}
+}, (item.status || 'class').toUpperCase()))));
+})()), /*#__PURE__*/React.createElement("div", {
+className: "card"
+}, /*#__PURE__*/React.createElement("h3", {
+style: {
+fontSize: '1.05rem',
+fontWeight: 800,
+marginBottom: '0.65rem',
+display: 'flex',
+alignItems: 'center',
+gap: '0.4rem'
+}
+}, "\uD83D\uDCDC Completed Past Package History"), !selectedUserModeStudent.packageHistory || selectedUserModeStudent.packageHistory.length === 0 ? /*#__PURE__*/React.createElement("p", {
+style: {
+fontSize: '0.8rem',
+color: 'var(--text-muted)',
+fontStyle: 'italic',
+margin: 0
+}
+}, "No completed past package cycles recorded yet.") : /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+flexDirection: 'column',
+gap: '0.45rem'
+}
+}, selectedUserModeStudent.packageHistory.map((item, idx) => /*#__PURE__*/React.createElement("div", {
+key: idx,
+style: {
+padding: '0.65rem 0.85rem',
+background: '#F8FAFC',
+border: '1px solid #E2E8F0',
+borderRadius: 'var(--radius-md)',
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'center',
+flexWrap: 'wrap',
+gap: '0.4rem',
+fontSize: '0.8rem'
+}
+}, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", {
+style: {
+color: 'var(--primary)'
+}
+}, "Cycle #", item.cycleId || idx + 1), " (", item.packageType, ")", /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '0.725rem',
+color: 'var(--text-muted)',
+marginTop: '0.1rem'
+}
+}, "Period: ", formatDateToYYYYMMDD(item.startDate), " to ", formatDateToYYYYMMDD(item.endDate))), /*#__PURE__*/React.createElement("span", {
+className: "badge",
+style: {
+background: '#ECFDF5',
+color: '#047857',
+border: '1px solid #A7F3D0',
+fontWeight: 700
+}
+}, "Completed (", item.completedCount || item.limit || 4, " Classes)")))))) : !userModeStudentSearch.trim() && /*#__PURE__*/React.createElement("div", {
+className: "card",
+style: {
+textAlign: 'center',
+padding: '2rem 1.25rem',
+background: '#F8FAFC',
+border: '2px dashed #CBD5E1'
+}
+}, /*#__PURE__*/React.createElement("i", {
+className: "fa-solid fa-lock",
+style: {
+fontSize: '2.25rem',
+color: '#94A3B8',
+marginBottom: '0.75rem'
+}
+}), /*#__PURE__*/React.createElement("h3", {
+style: {
+fontSize: '1.1rem',
+fontWeight: 800,
+color: 'var(--text-main)',
+margin: 0
+}
+}, "Private Student Access"), /*#__PURE__*/React.createElement("p", {
+style: {
+fontSize: '0.825rem',
+color: 'var(--text-muted)',
+maxWidth: '420px',
+margin: '0.4rem auto 0'
+}
+}, "Please type your registered student name above (e.g. ", /*#__PURE__*/React.createElement("strong", null, "Aanish"), ") to view your individual class details."))));
 }
 return /*#__PURE__*/React.createElement("div", {
 className: "app-layout"
@@ -3636,7 +4211,7 @@ className: "badge badge-absent",
 style: {
 fontSize: '0.85rem'
 }
-}, "\u2717 ", absentCount, " Absent"), extraCount > 0 && /*#__PURE__*/React.createElement("span", {
+}, "\u2717 ", absentCount, " Absent"), leaveCount > 0 && /*#__PURE__*/React.createElement("span", {
 className: "badge",
 style: {
 background: '#FFFBEB',
@@ -3644,7 +4219,7 @@ color: '#B45309',
 border: '1px solid #FDE68A',
 fontSize: '0.85rem'
 }
-}, "\u2B50 ", extraCount, " Extra"), /*#__PURE__*/React.createElement("span", {
+}, "\uD83C\uDFD6\uFE0F ", leaveCount, " On Leave"), /*#__PURE__*/React.createElement("span", {
 style: {
 fontSize: '0.85rem',
 color: 'var(--text-main)',
@@ -3687,6 +4262,7 @@ const st = getStudentStatus(student.id);
 const isPresent = st === 'present';
 const isAbsent = st === 'absent';
 const isExtra = st === 'extra';
+const isLeave = st === 'leave';
 const reschForSelectedDate = (student.rescheduledClasses || []).filter(r => r.date === selectedDate);
 return /*#__PURE__*/React.createElement("div", {
 key: student.id,
@@ -3881,18 +4457,18 @@ color: isAbsent ? 'white' : 'var(--absent-text)',
 boxShadow: isAbsent ? '0 3px 10px rgba(239, 68, 68, 0.3)' : 'none'
 }
 }, "\u2717 ABSENT"), /*#__PURE__*/React.createElement("button", {
-onClick: () => setSingleAttendance(student.id, 'extra'),
+onClick: () => setSingleAttendance(student.id, 'leave'),
 style: {
 padding: '0.6rem 0.35rem',
 borderRadius: 'var(--radius-md)',
 fontWeight: 800,
 fontSize: '0.775rem',
-border: isExtra ? '2px solid #D97706' : '1px solid #FDE68A',
-background: isExtra ? '#D97706' : '#FFFBEB',
-color: isExtra ? 'white' : '#B45309',
-boxShadow: isExtra ? '0 3px 10px rgba(217, 119, 6, 0.3)' : 'none'
+border: isLeave ? '2px solid #D97706' : '1px solid #FDE68A',
+background: isLeave ? '#D97706' : '#FFFBEB',
+color: isLeave ? 'white' : '#B45309',
+boxShadow: isLeave ? '0 3px 10px rgba(217, 119, 6, 0.3)' : 'none'
 }
-}, "\u2B50 EXTRA")), userRole === 'owner' && /*#__PURE__*/React.createElement("div", {
+}, "\uD83C\uDFD6\uFE0F LEAVE")), userRole === 'owner' && /*#__PURE__*/React.createElement("div", {
 style: {
 display: 'grid',
 gridTemplateColumns: '1fr 1fr',
@@ -5897,7 +6473,7 @@ padding: '1rem'
 className: "card",
 style: {
 width: '100%',
-maxWidth: '880px',
+maxWidth: '900px',
 maxHeight: '92vh',
 display: 'flex',
 flexDirection: 'column',
@@ -5939,14 +6515,14 @@ fontWeight: 800,
 margin: 0,
 color: 'white'
 }
-}, "Past Cycle & Backlog Calendar Builder"), /*#__PURE__*/React.createElement("p", {
+}, "Student Backlog & Past Cycles Manager"), /*#__PURE__*/React.createElement("p", {
 style: {
 fontSize: '0.75rem',
 color: '#C7D2FE',
 margin: 0,
 marginTop: '0.15rem'
 }
-}, "Select date ranges (2025\u2013Present), toggle classes held/missed/extra, add song notes & sync to Google Sheets."))), /*#__PURE__*/React.createElement("button", {
+}, "Log back-date classes, manage past payment fees & sync dedicated Backlog Records tab to Google Sheets."))), /*#__PURE__*/React.createElement("button", {
 onClick: () => setShowBacklogModal(false),
 style: {
 background: 'rgba(255,255,255,0.15)',
@@ -5963,6 +6539,40 @@ justifyContent: 'center'
 }
 }, "\u2715")), /*#__PURE__*/React.createElement("div", {
 style: {
+display: 'flex',
+background: '#F1F5F9',
+borderBottom: '1px solid #E2E8F0',
+padding: '0 1.5rem'
+}
+}, /*#__PURE__*/React.createElement("button", {
+onClick: () => setBacklogActiveTab('logger'),
+style: {
+padding: '0.75rem 1.25rem',
+fontWeight: 700,
+fontSize: '0.85rem',
+border: 'none',
+borderBottom: backlogActiveTab === 'logger' ? '3px solid var(--primary)' : '3px solid transparent',
+background: 'none',
+color: backlogActiveTab === 'logger' ? 'var(--primary)' : 'var(--text-muted)',
+cursor: 'pointer'
+}
+}, "\uD83D\uDCC5 Log Backlog & Dates"), /*#__PURE__*/React.createElement("button", {
+onClick: () => setBacklogActiveTab('manage'),
+style: {
+padding: '0.75rem 1.25rem',
+fontWeight: 700,
+fontSize: '0.85rem',
+border: 'none',
+borderBottom: backlogActiveTab === 'manage' ? '3px solid var(--primary)' : '3px solid transparent',
+background: 'none',
+color: backlogActiveTab === 'manage' ? 'var(--primary)' : 'var(--text-muted)',
+cursor: 'pointer'
+}
+}, "\uD83D\uDCCB View & Edit Saved Backlog Records (", (() => {
+const s = students.find(st => st.id === backlogStudentId);
+return s?.packageHistory?.length || 0;
+})(), ")")), /*#__PURE__*/React.createElement("div", {
+style: {
 padding: '1.25rem 1.5rem',
 overflowY: 'auto',
 flex: 1,
@@ -5973,8 +6583,8 @@ gap: '1.15rem'
 }, /*#__PURE__*/React.createElement("div", {
 style: {
 display: 'grid',
-gridTemplateColumns: '1.5fr 1fr 1fr',
-gap: '1rem',
+gridTemplateColumns: '1.5fr 1fr 1fr 1fr',
+gap: '0.85rem',
 background: '#F8FAFC',
 padding: '0.85rem 1rem',
 borderRadius: 'var(--radius-md)',
@@ -6051,7 +6661,31 @@ border: '1px solid var(--border-color)',
 fontWeight: 600,
 fontSize: '0.825rem'
 }
-}))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+})), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+style: {
+fontSize: '0.75rem',
+fontWeight: 700,
+color: 'var(--text-muted)',
+display: 'block',
+marginBottom: '0.25rem'
+}
+}, "Backlog Fee Status"), /*#__PURE__*/React.createElement("select", {
+value: backlogFeeStatus,
+onChange: e => setBacklogFeeStatus(e.target.value),
+style: {
+width: '100%',
+padding: '0.45rem 0.6rem',
+borderRadius: 'var(--radius-md)',
+border: '1px solid var(--border-color)',
+fontWeight: 700,
+fontSize: '0.825rem',
+color: backlogFeeStatus === 'paid' ? '#047857' : '#DC2626'
+}
+}, /*#__PURE__*/React.createElement("option", {
+value: "paid"
+}, "\uD83D\uDFE2 Fee Paid"), /*#__PURE__*/React.createElement("option", {
+value: "pending"
+}, "\uD83D\uDD34 Fee Pending")))), backlogActiveTab === 'logger' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
 style: {
 fontSize: '0.75rem',
 fontWeight: 700,
@@ -6125,12 +6759,12 @@ style: {
 fontSize: '0.725rem',
 color: 'var(--text-muted)'
 }
-}, "Click status badges to toggle or edit song notes below")), /*#__PURE__*/React.createElement("div", {
+}, "Toggle Held, Leave (does not count class), or Absent & add song notes below")), /*#__PURE__*/React.createElement("div", {
 style: {
 display: 'flex',
 flexDirection: 'column',
 gap: '0.4rem',
-maxHeight: '300px',
+maxHeight: '280px',
 overflowY: 'auto',
 paddingRight: '0.35rem'
 }
@@ -6150,8 +6784,8 @@ gridTemplateColumns: '1.2fr 2fr 2.5fr',
 gap: '0.6rem',
 alignItems: 'center',
 padding: '0.4rem 0.65rem',
-background: item.status === 'present' ? '#F0FDF4' : item.status === 'extra' ? '#F5F3FF' : item.status === 'absent' ? '#FEF2F2' : '#FFFFFF',
-border: `1px solid ${item.status === 'present' ? '#BBF7D0' : item.status === 'extra' ? '#DDD6FE' : item.status === 'absent' ? '#FECACA' : '#E2E8F0'}`,
+background: item.status === 'present' ? '#F0FDF4' : item.status === 'leave' ? '#FFFBEB' : item.status === 'absent' ? '#FEF2F2' : '#FFFFFF',
+border: `1px solid ${item.status === 'present' ? '#BBF7D0' : item.status === 'leave' ? '#FDE68A' : item.status === 'absent' ? '#FECACA' : '#E2E8F0'}`,
 borderRadius: 'var(--radius-md)'
 }
 }, /*#__PURE__*/React.createElement("div", {
@@ -6178,7 +6812,7 @@ background: item.status === 'present' ? 'var(--present-bg)' : '#F1F5F9',
 color: item.status === 'present' ? 'var(--present-text)' : '#64748B'
 }
 }, "\u2713 Held"), /*#__PURE__*/React.createElement("button", {
-onClick: () => toggleBacklogDateStatus(dStr, 'extra'),
+onClick: () => toggleBacklogDateStatus(dStr, 'leave'),
 style: {
 padding: '0.2rem 0.45rem',
 borderRadius: '4px',
@@ -6186,10 +6820,10 @@ fontSize: '0.675rem',
 fontWeight: 700,
 border: 'none',
 cursor: 'pointer',
-background: item.status === 'extra' ? '#8B5CF6' : '#F1F5F9',
-color: item.status === 'extra' ? 'white' : '#64748B'
+background: item.status === 'leave' ? '#D97706' : '#F1F5F9',
+color: item.status === 'leave' ? 'white' : '#64748B'
 }
-}, "\u2B50 Extra"), /*#__PURE__*/React.createElement("button", {
+}, "\uD83C\uDFD6\uFE0F Leave"), /*#__PURE__*/React.createElement("button", {
 onClick: () => toggleBacklogDateStatus(dStr, 'absent'),
 style: {
 padding: '0.2rem 0.45rem',
@@ -6232,12 +6866,9 @@ const selStudent = students.find(s => s.id === backlogStudentId);
 const limit = selStudent ? getPackageLimit(selStudent.packageType) : 4;
 let attendedCount = 0;
 let absentCount = 0;
-let extraCount = 0;
+let leaveCount = 0;
 Object.values(backlogDateMap).forEach(item => {
-if (item.status === 'present') attendedCount++;else if (item.status === 'extra') {
-attendedCount++;
-extraCount++;
-} else if (item.status === 'absent') absentCount++;
+if (item.status === 'present') attendedCount++;else if (item.status === 'leave') leaveCount++;else if (item.status === 'absent') absentCount++;
 });
 const completedCycles = Math.floor(attendedCount / limit);
 const currentCycleProgress = attendedCount % limit;
@@ -6265,7 +6896,7 @@ fontSize: '0.725rem',
 color: '#4338CA',
 marginTop: '0.1rem'
 }
-}, "Attended: ", /*#__PURE__*/React.createElement("strong", null, attendedCount, " classes"), " (", extraCount, " extra) | Missed: ", /*#__PURE__*/React.createElement("strong", null, absentCount, " absent"))), /*#__PURE__*/React.createElement("div", {
+}, "Attended: ", /*#__PURE__*/React.createElement("strong", null, attendedCount, " classes"), " | On Leave: ", /*#__PURE__*/React.createElement("strong", null, leaveCount, " leave"), " | Missed: ", /*#__PURE__*/React.createElement("strong", null, absentCount, " absent"))), /*#__PURE__*/React.createElement("div", {
 style: {
 display: 'flex',
 gap: '0.4rem',
@@ -6293,7 +6924,140 @@ fontSize: '0.725rem',
 fontWeight: 700
 }
 }, "Active Cycle: ", currentCycleProgress, " / ", limit, " Classes")));
-})()), /*#__PURE__*/React.createElement("div", {
+})()) :
+/*#__PURE__*/
+/* TAB 2: VIEW & MANAGE SAVED BACKLOG RECORDS */
+React.createElement("div", {
+style: {
+display: 'flex',
+flexDirection: 'column',
+gap: '0.85rem'
+}
+}, /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'center'
+}
+}, /*#__PURE__*/React.createElement("h4", {
+style: {
+fontSize: '0.9rem',
+fontWeight: 800,
+margin: 0,
+color: 'var(--text-main)'
+}
+}, "\uD83D\uDCDC Past Backlog Package History for ", (() => {
+const s = students.find(st => st.id === backlogStudentId);
+return s?.name || 'Selected Student';
+})()), /*#__PURE__*/React.createElement("span", {
+style: {
+fontSize: '0.75rem',
+color: 'var(--text-muted)'
+}
+}, "Manage fees or delete old backlog entries")), (() => {
+const selStudent = students.find(s => s.id === backlogStudentId);
+const history = selStudent?.packageHistory || [];
+if (history.length === 0) {
+return /*#__PURE__*/React.createElement("div", {
+style: {
+padding: '2rem',
+textAlign: 'center',
+background: '#F8FAFC',
+border: '1px dashed #CBD5E1',
+borderRadius: 'var(--radius-md)',
+color: 'var(--text-muted)',
+fontSize: '0.85rem'
+}
+}, "No past backlog package cycles recorded yet for this student. Use the ", /*#__PURE__*/React.createElement("strong", null, "Log Backlog & Dates"), " tab above to create backlogs.");
+}
+return /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+flexDirection: 'column',
+gap: '0.65rem',
+maxHeight: '380px',
+overflowY: 'auto'
+}
+}, history.map((item, idx) => /*#__PURE__*/React.createElement("div", {
+key: idx,
+style: {
+padding: '0.85rem 1rem',
+background: '#FFFFFF',
+border: '1px solid #E2E8F0',
+borderRadius: 'var(--radius-md)',
+display: 'flex',
+justifyContent: 'space-between',
+alignItems: 'center',
+flexWrap: 'wrap',
+gap: '0.75rem'
+}
+}, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+alignItems: 'center',
+gap: '0.5rem'
+}
+}, /*#__PURE__*/React.createElement("strong", {
+style: {
+fontSize: '0.875rem',
+color: 'var(--primary)'
+}
+}, "Cycle #", item.cycleId || idx + 1), /*#__PURE__*/React.createElement("span", {
+className: "badge",
+style: {
+background: '#EEF2FF',
+color: 'var(--primary)',
+fontSize: '0.7rem'
+}
+}, item.packageType || '4 Classes Package'), /*#__PURE__*/React.createElement("span", {
+className: "badge",
+style: {
+background: item.feeStatus === 'pending' ? '#FEF2F2' : '#ECFDF5',
+color: item.feeStatus === 'pending' ? '#DC2626' : '#047857',
+border: `1px solid ${item.feeStatus === 'pending' ? '#FECACA' : '#A7F3D0'}`,
+fontSize: '0.7rem',
+fontWeight: 700
+}
+}, item.feeStatus === 'pending' ? '🔴 FEE PENDING' : '🟢 FEE PAID')), /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '0.775rem',
+color: 'var(--text-muted)',
+marginTop: '0.25rem'
+}
+}, "Period: ", /*#__PURE__*/React.createElement("strong", null, formatDateToYYYYMMDD(item.startDate)), " to ", /*#__PURE__*/React.createElement("strong", null, formatDateToYYYYMMDD(item.endDate)), " | Fee: ", /*#__PURE__*/React.createElement("strong", null, "\u20B9", (item.packageAmount || 6000).toLocaleString('en-IN'))), item.remarks && /*#__PURE__*/React.createElement("div", {
+style: {
+fontSize: '0.725rem',
+color: '#475569',
+fontStyle: 'italic',
+marginTop: '0.15rem'
+}
+}, "Notes: ", item.remarks)), /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+gap: '0.4rem',
+alignItems: 'center'
+}
+}, /*#__PURE__*/React.createElement("button", {
+onClick: () => toggleBacklogFeeStatus(backlogStudentId, idx),
+className: "btn-secondary",
+style: {
+fontSize: '0.75rem',
+padding: '0.35rem 0.65rem'
+}
+}, "\uD83D\uDCB3 Toggle ", item.feeStatus === 'pending' ? 'Paid' : 'Pending'), /*#__PURE__*/React.createElement("button", {
+onClick: () => deleteBacklogCycle(backlogStudentId, idx),
+style: {
+padding: '0.35rem 0.65rem',
+background: '#FEF2F2',
+color: '#DC2626',
+border: '1px solid #FECACA',
+borderRadius: 'var(--radius-md)',
+fontWeight: 700,
+fontSize: '0.75rem',
+cursor: 'pointer'
+}
+}, "\uD83D\uDDD1\uFE0F Delete Record")))));
+})())), /*#__PURE__*/React.createElement("div", {
 style: {
 padding: '0.85rem 1.5rem',
 background: '#F8FAFC',
@@ -6309,7 +7073,7 @@ style: {
 padding: '0.45rem 0.85rem',
 fontSize: '0.8rem'
 }
-}, "Cancel"), /*#__PURE__*/React.createElement("button", {
+}, "Close"), backlogActiveTab === 'logger' && /*#__PURE__*/React.createElement("button", {
 onClick: saveBacklogData,
 className: "btn-primary",
 style: {
