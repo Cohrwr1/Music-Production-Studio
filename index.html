@@ -1597,6 +1597,7 @@ const [userModeStudentSearch, setUserModeStudentSearch] = useState('');
 const [selectedUserModeStudent, setSelectedUserModeStudent] = useState(null);
 const [backlogActiveTab, setBacklogActiveTab] = useState('logger');
 const [backlogFeeStatus, setBacklogFeeStatus] = useState('paid');
+const [lastUserEditTimestamp, setLastUserEditTimestamp] = useState(0);
 const [userRole, setUserRole] = useState(() => sessionStorage.getItem('harmony_user_role') || 'owner');
 const [enteredPin, setEnteredPin] = useState('');
 const [pinError, setPinError] = useState('');
@@ -1837,13 +1838,14 @@ console.log('Background Google Sheet sync:', err);
 }
 }
 async function syncCentralData(newStudents, newAttendance = attendance, targetSheetUrl = sheetUrl) {
+setLastUserEditTimestamp(Date.now());
 setStudents(newStudents);
 setAttendance(newAttendance);
 localStorage.setItem('harmony_music_students', JSON.stringify(newStudents));
 localStorage.setItem('harmony_music_attendance', JSON.stringify(newAttendance));
 if (targetSheetUrl) localStorage.setItem('harmony_sheet_url', targetSheetUrl);
 
-// Instant direct Google Sheets auto-push across all 4 tabs
+// Direct push to Google Sheets Web App on user edit
 const sheetUrlToUse = targetSheetUrl || sheetUrl || localStorage.getItem('harmony_sheet_url');
 if (sheetUrlToUse && sheetUrlToUse.trim()) {
 autoPushToGoogleSheet(sheetUrlToUse.trim(), newStudents, newAttendance);
@@ -2659,6 +2661,10 @@ avatarColor: '#6366F1'
 return imported;
 }
 async function handleFetchFromGoogleSheet(overrideUrl = null, silent = false) {
+// Skip background poll if user recently made a local edit (prevents overwrite during push in flight)
+if (silent && Date.now() - lastUserEditTimestamp < 12000) {
+return;
+}
 const targetUrl = overrideUrl || sheetUrl;
 if (!targetUrl || !targetUrl.trim()) {
 if (!silent) setActiveTab('sheets');
@@ -2693,8 +2699,27 @@ parsedRows = parseCSVRows(textData);
 }
 const importedStudents = processRowsIntoStudents(parsedRows);
 if (importedStudents.length > 0) {
-syncCentralData(importedStudents, attendance, targetUrl);
-if (!silent) alert(`🎧 Loaded ${importedStudents.length} students from Google Sheet! Synced centrally for all devices.`);
+// Smart-merge fetched rows with current local state to preserve rich properties
+const mergedStudents = importedStudents.map(imp => {
+const existing = students.find(s => s.id === imp.id || s.name && imp.name && s.name.toLowerCase() === imp.name.toLowerCase());
+if (existing) {
+return {
+...imp,
+packageHistory: existing.packageHistory && existing.packageHistory.length > 0 ? existing.packageHistory : imp.packageHistory || [],
+completedClassesCount: imp.completedClassesCount !== undefined && imp.completedClassesCount !== null ? imp.completedClassesCount : existing.completedClassesCount || 0,
+lastClassDate: imp.lastClassDate || existing.lastClassDate || '',
+feeStatus: imp.feeStatus || existing.feeStatus || 'paid',
+remarks: imp.remarks || existing.remarks || ''
+};
+}
+return imp;
+});
+
+// Update local state directly WITHOUT calling autoPushToGoogleSheet (prevents feedback loop overwrite!)
+setStudents(mergedStudents);
+localStorage.setItem('harmony_music_students', JSON.stringify(mergedStudents));
+if (targetUrl) localStorage.setItem('harmony_sheet_url', targetUrl);
+if (!silent) alert(`🎧 Loaded ${importedStudents.length} students from Google Sheet! Local data updated.`);
 } else {
 if (!silent) alert('Could not find student rows in the connected Google Sheet.');
 }
