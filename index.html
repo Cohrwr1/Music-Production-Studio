@@ -1695,39 +1695,40 @@ return localStorage.getItem('harmony_sheet_url') || DEFAULT_SHEET_URL || '';
 // 100% REAL-TIME CONTINUOUS ONLINE CLOUD SYNC LOOP (Polls every 2 seconds)
 useEffect(() => {
 let isMounted = true;
-const checkCentralData = async () => {
-// 1. Fetch live database from Central Real-Time Cloud Database
-try {
-const response = await fetch(CLOUD_DB_URL + '?t=' + Date.now(), {
-cache: 'no-store'
-});
-if (response.ok) {
-const json = await response.json();
-const cloudData = json?.data;
-if (cloudData && Array.isArray(cloudData.students)) {
-const cleanCloud = cloudData.students.filter(s => s && s.name && !s.name.includes('function') && !s.name.includes('typeof') && !s.name.includes('<') && s.name.length <= 50);
-if (isMounted) {
-const cleanStr = JSON.stringify(cleanCloud);
-const currStudentsStr = localStorage.getItem('harmony_music_students') || '';
-if (cleanStr !== currStudentsStr) {
-setStudents(cleanCloud);
-if (cloudData.attendance) setAttendance(cloudData.attendance);
-localStorage.setItem('harmony_music_students', cleanStr);
-if (cloudData.attendance) localStorage.setItem('harmony_music_attendance', JSON.stringify(cloudData.attendance));
-return;
+
+// Auto-fetch latest live data from Google Sheets upon app mount / launch
+const initialSync = async () => {
+const currentSheetUrl = localStorage.getItem('harmony_sheet_url') || sheetUrl;
+if (currentSheetUrl && currentSheetUrl.trim()) {
+await handleFetchFromGoogleSheet(currentSheetUrl.trim(), true);
 }
-}
-}
-}
-} catch (e) {}
 };
-checkCentralData();
-const timer = setInterval(checkCentralData, 2000); // Ultra-responsive 2-second live sync!
+initialSync();
+
+// Background poll every 10 seconds to keep all browsers in sync with Google Sheets
+const syncInterval = setInterval(() => {
+const currentSheetUrl = localStorage.getItem('harmony_sheet_url') || sheetUrl;
+if (currentSheetUrl && currentSheetUrl.trim() && isMounted) {
+handleFetchFromGoogleSheet(currentSheetUrl.trim(), true);
+}
+}, 10000);
+
+// Auto-sync on window focus
+const handleFocusSync = () => {
+const currentSheetUrl = localStorage.getItem('harmony_sheet_url') || sheetUrl;
+if (currentSheetUrl && currentSheetUrl.trim()) {
+handleFetchFromGoogleSheet(currentSheetUrl.trim(), true);
+}
+};
+window.addEventListener('focus', handleFocusSync);
+document.addEventListener('visibilitychange', handleFocusSync);
 return () => {
 isMounted = false;
-clearInterval(timer);
+clearInterval(syncInterval);
+window.removeEventListener('focus', handleFocusSync);
+document.removeEventListener('visibilitychange', handleFocusSync);
 };
-}, []);
+}, [sheetUrl]);
 async function autoPushToGoogleSheet(url, studs, atts) {
 if (!url || !url.trim() || url.includes('docs.google.com/spreadsheets/d/')) {
 return;
@@ -1842,30 +1843,10 @@ localStorage.setItem('harmony_music_students', JSON.stringify(newStudents));
 localStorage.setItem('harmony_music_attendance', JSON.stringify(newAttendance));
 if (targetSheetUrl) localStorage.setItem('harmony_sheet_url', targetSheetUrl);
 
-// 1. INSTANT REAL-TIME CENTRAL CLOUD SYNC (Works 100% on GitHub Pages & PC2!)
-try {
-await fetch(CLOUD_DB_URL, {
-method: 'PUT',
-headers: {
-'Content-Type': 'application/json'
-},
-body: JSON.stringify({
-name: 'Harmony Music Studio Central Database 2026',
-data: {
-students: newStudents,
-attendance: newAttendance,
-updatedAt: Date.now()
-}
-})
-});
-} catch (e) {
-console.log('Real-time cloud PUT error:', e);
-}
-
-// 2. Optional push to Google Sheet if Web App URL is connected & user is Owner
-const sheetUrlToUse = targetSheetUrl || sheetUrl || localStorage.getItem('harmony_sheet_url') || DEFAULT_SHEET_URL;
-if (sheetUrlToUse && sheetUrlToUse.trim() && userRole === 'owner') {
-autoPushToGoogleSheet(sheetUrlToUse, newStudents, newAttendance);
+// Instant direct Google Sheets auto-push across all 4 tabs
+const sheetUrlToUse = targetSheetUrl || sheetUrl || localStorage.getItem('harmony_sheet_url');
+if (sheetUrlToUse && sheetUrlToUse.trim()) {
+autoPushToGoogleSheet(sheetUrlToUse.trim(), newStudents, newAttendance);
 }
 }
 
