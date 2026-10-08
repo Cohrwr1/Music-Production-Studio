@@ -1470,26 +1470,28 @@ const formatDateToYYYYMMDD = val => {
 if (val === null || val === undefined || val === 'N/A' || val === 'null' || val === 'undefined') {
 return '';
 }
-const str = String(val).trim();
-if (!str) return '';
+let str = String(val).trim();
+if (!str || str === 'N/A' || str === 'null' || str === 'undefined') return '';
 
-// 1. If string is ALREADY YYYY-MM-DD (e.g. "2026-10-08" or "2026-10-08T11:43:08")
-if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-return str.slice(0, 10);
+// 1. If ISO string (e.g. "2026-10-08T11:43:08.000Z" or "2026-10-08 11:43:08")
+if (str.includes('T')) str = str.split('T')[0];
+if (str.includes(' ')) str = str.split(' ')[0];
+
+// 2. If YYYY-MM-DD format (e.g. "2026-10-08")
+if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+return str;
 }
 
-// 2. If string is DD/MM/YYYY, MM/DD/YYYY or DD-MM-YYYY (e.g. "08/10/2026" or "08-10-2026")
+// 3. If DD/MM/YYYY, MM/DD/YYYY or DD-MM-YYYY (e.g. "08/10/2026" or "08-10-2026")
 const parts = str.split(/[\/\-\.]/);
 if (parts.length === 3) {
 let [p1, p2, p3] = parts.map(p => p.trim());
-// If 4-digit year is at end (e.g. 08/10/2026)
 if (p3.length === 4) {
 const yyyy = p3;
 const mm = String(p2).padStart(2, '0');
 const dd = String(p1).padStart(2, '0');
 return `${yyyy}-${mm}-${dd}`;
 }
-// If 4-digit year is at start (e.g. 2026/10/08)
 if (p1.length === 4) {
 const yyyy = p1;
 const mm = String(p2).padStart(2, '0');
@@ -1497,10 +1499,6 @@ const dd = String(p3).padStart(2, '0');
 return `${yyyy}-${mm}-${dd}`;
 }
 }
-
-// 3. Fallback for strings containing ISO 'T' or space
-if (str.includes('T')) return str.split('T')[0];
-if (str.includes(' ')) return str.split(' ')[0];
 return str.slice(0, 10);
 };
 const generateInitialMusicStudents = () => {
@@ -2287,8 +2285,8 @@ setDirectCycleTitle(`Cycle #${item.cycleId || cycleIdx + 1}`);
 setDirectPackageType(item.packageType || student.packageType || '4 Classes Package (₹6,000)');
 setDirectPackageAmount(item.packageAmount || 6000);
 setDirectCompletedCount(item.completedCount || item.limit || 4);
-setDirectStartDate(formatDateToYYYYMMDD(item.startDate || '2025-01-01'));
-setDirectEndDate(formatDateToYYYYMMDD(item.endDate || '2025-01-31'));
+setDirectStartDate(formatDateToYYYYMMDD(item.startDate) || '2025-01-01');
+setDirectEndDate(formatDateToYYYYMMDD(item.endDate) || '2025-01-31');
 setDirectFeeStatus(item.feeStatus || 'paid');
 setDirectRemarks(item.remarks || '');
 setBacklogActiveTab('direct');
@@ -6301,18 +6299,93 @@ key: idx,
 style: {
 background: '#FFFFFF',
 border: '1px solid #E2E8F0',
-padding: '0.55rem',
+padding: '0.65rem',
 borderRadius: '6px',
 fontSize: '0.775rem',
 display: 'flex',
 justifyContent: 'space-between',
+alignItems: 'center',
+flexWrap: 'wrap',
+gap: '0.5rem'
+}
+}, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+alignItems: 'center',
+gap: '0.4rem'
+}
+}, /*#__PURE__*/React.createElement("strong", {
+style: {
+color: 'var(--primary)'
+}
+}, "Cycle #", item.cycleId || idx + 1, ":"), " ", item.packageType || '4 Classes', " (", item.completedCount || 4, "/", item.limit || 4, " classes)", /*#__PURE__*/React.createElement("span", {
+className: "badge",
+style: {
+background: item.feeStatus === 'pending' ? '#FEF2F2' : '#ECFDF5',
+color: item.feeStatus === 'pending' ? '#DC2626' : '#047857',
+fontSize: '0.675rem',
+fontWeight: 700
+}
+}, item.feeStatus === 'pending' ? 'FEE PENDING' : 'FEE PAID')), /*#__PURE__*/React.createElement("div", {
+style: {
+color: 'var(--text-muted)',
+marginTop: '0.15rem'
+}
+}, "\uD83D\uDCC5 ", formatDateToYYYYMMDD(item.startDate), " to ", formatDateToYYYYMMDD(item.endDate), " | Fee: \u20B9", (item.packageAmount || 6000).toLocaleString('en-IN')), item.remarks && /*#__PURE__*/React.createElement("div", {
+style: {
+color: '#475569',
+fontStyle: 'italic',
+marginTop: '0.1rem'
+}
+}, "Notes: ", item.remarks)), /*#__PURE__*/React.createElement("div", {
+style: {
+display: 'flex',
+gap: '0.35rem',
 alignItems: 'center'
 }
-}, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "Cycle #", item.cycleId || idx + 1, ":"), " ", item.packageType || '4 Classes', " (", item.completedCount || 4, "/", item.limit || 4, " classes)", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
+}, /*#__PURE__*/React.createElement("button", {
+type: "button",
+onClick: () => {
+setIsEditStudentOpen(false);
+openBacklogModal(studentToEdit.id);
+setTimeout(() => startEditBacklogCycle(studentToEdit.id, idx), 100);
+},
 style: {
-color: 'var(--text-muted)'
+padding: '0.25rem 0.5rem',
+background: '#EEF2FF',
+color: 'var(--primary)',
+border: '1px solid #C7D2FE',
+borderRadius: '4px',
+fontWeight: 700,
+fontSize: '0.725rem',
+cursor: 'pointer'
 }
-}, "\uD83D\uDCC5 ", item.startDate, " to ", item.endDate, " | ", item.remarks || 'Completed')), /*#__PURE__*/React.createElement("button", {
+}, "\u270F\uFE0F Edit Cycle"), /*#__PURE__*/React.createElement("button", {
+type: "button",
+onClick: () => {
+const hist = [...(studentToEdit.packageHistory || [])];
+if (hist[idx]) {
+hist[idx] = {
+...hist[idx],
+feeStatus: hist[idx].feeStatus === 'paid' ? 'pending' : 'paid'
+};
+setStudentToEdit({
+...studentToEdit,
+packageHistory: hist
+});
+}
+},
+style: {
+padding: '0.25rem 0.5rem',
+background: '#F8FAFC',
+color: 'var(--text-main)',
+border: '1px solid #CBD5E1',
+borderRadius: '4px',
+fontWeight: 700,
+fontSize: '0.725rem',
+cursor: 'pointer'
+}
+}, "\uD83D\uDCB3 Toggle Fee"), /*#__PURE__*/React.createElement("button", {
 type: "button",
 onClick: () => {
 const updatedHist = studentToEdit.packageHistory.filter((_, i) => i !== idx);
@@ -6323,13 +6396,16 @@ packageHistory: updatedHist
 },
 style: {
 color: '#EF4444',
-border: 'none',
-background: 'none',
+border: '1px solid #FECACA',
+background: '#FEF2F2',
+padding: '0.25rem 0.45rem',
+borderRadius: '4px',
 cursor: 'pointer',
-fontSize: '0.9rem'
+fontSize: '0.75rem',
+fontWeight: 700
 },
 title: "Remove this past record"
-}, "\u2715")))))), /*#__PURE__*/React.createElement("div", {
+}, "\uD83D\uDDD1\uFE0F")))), "}"))), /*#__PURE__*/React.createElement("div", {
 className: "modal-footer"
 }, /*#__PURE__*/React.createElement("button", {
 type: "button",
