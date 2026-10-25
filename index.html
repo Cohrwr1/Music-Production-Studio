@@ -2083,8 +2083,8 @@ function handleImportPreParsedBacklog() {
   setLastUserEditTimestamp(Date.now());
   const bUrl = backlogSheetUrl || localStorage.getItem('harmony_backlog_sheet_url') || '';
   if (bUrl) autoPushBacklogToSheet(bUrl, updatedStudents);
-  alert(`✅ Backlog imported for ${importCount} student(s)!\n${alreadyHadData > 0 ? alreadyHadData + ' student(s) already had data (skipped).' : ''}\n\nSwitching to the Backlog tab to verify.`);
-  setActiveTab('backlog');
+  alert(`✅ Backlog imported for ${importCount} student(s)!\n${alreadyHadData > 0 ? alreadyHadData + ' student(s) already had data (skipped).' : ''}\n\nGo to any student card and click their Backlog history to verify.`);
+  setActiveTab('students');
 }
 
 async function syncCentralData(newStudents, newAttendance = attendance, targetSheetUrl = sheetUrl) {
@@ -5496,14 +5496,7 @@ className: "fa-solid fa-cloud-arrow-up"
     /*#__PURE__*/React.createElement("i", {className: "fa-solid fa-file-import"}), " Import All Backlog Now"
   )
 ), /*#__PURE__*/React.createElement("div", {style: {background: 'linear-gradient(135deg, #FFF7ED 0%, #FFFBEB 100%)', border: '2px solid #FCD34D', borderRadius: 'var(--radius-md)', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem'}},
-  /*#__PURE__*/React.createElement("div", null,
-    /*#__PURE__*/React.createElement("h3", {style: {fontSize: '1rem', fontWeight: 800, color: '#92400E', marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.4rem'}},
-      /*#__PURE__*/React.createElement("i", {className: "fa-solid fa-bolt"}), " One-Click Backlog Import (Ready Now!)"
-    ),
-    /*#__PURE__*/React.createElement("p", {style: {fontSize: '0.8rem', color: '#B45309'}},
-      "Your backlog Google Sheet has already been read and processed. Click below to instantly import all past payment cycles for all students."
-    )
-  ),
+  ,
   /*#__PURE__*/React.createElement("div", {style: {background: '#FEF3C7', borderRadius: '8px', padding: '0.75rem', fontSize: '0.82rem', color: '#78350F', lineHeight: '1.6'}},
     /*#__PURE__*/React.createElement("strong", null, "What will be imported:"),
     /*#__PURE__*/React.createElement("ul", {style: {paddingLeft: '1.1rem', marginTop: '0.3rem'}},
