@@ -1468,6 +1468,173 @@ const BACKLOG_IMPORT_DATA = {"Meghna Ann Bajaj":{"packageHistory":[{"cycleId":1,
 
 const MUSIC_LESSON_OPTIONS = ['Vocal Lessons', 'Piano Lessons', 'App Lessons'];
 
+// ── ATTENDANCE SHEET INTEGRATION ──
+const ATTENDANCE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1aCHYJrvjzg1goDalQpwXAPenEU0At2xAkzU-3ESdcHQ/gviz/tq?tqx=out:csv';
+
+// Parse the horizontal attendance CSV: each student occupies 3 columns (Date, Classes, Remarks)
+function parseAttendanceCsv(csvText) {
+  const rows = [];
+  const lines = csvText.split('\n');
+  // Simple CSV line parser handling quoted fields
+  function parseLine(line) {
+    const cells = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQ = !inQ; continue; }
+      if (ch === ',' && !inQ) { cells.push(cur.trim()); cur = ''; continue; }
+      cur += ch;
+    }
+    cells.push(cur.trim());
+    return cells;
+  }
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    rows.push(parseLine(trimmed));
+  }
+  if (rows.length < 2) return { lastClassByStudent: {}, paymentByStudent: {} };
+
+  const headerRow = rows[0]; // student names appear every 3 columns
+  const lastClassByStudent = {};
+  const paymentByStudent = {};
+
+  // Iterate columns in steps of 3
+  for (let col = 0; col < headerRow.length; col += 3) {
+    let studentName = (headerRow[col] || '').replace(/["']/g, '').trim();
+    if (!studentName) continue;
+    // The header might have trailing info, take just the name
+    studentName = studentName.split('(')[0].trim();
+
+    let latestClassDate = null;
+    let hasPaid = false;
+
+    // Go through data rows for this student's columns
+    for (let r = 1; r < rows.length; r++) {
+      const dateCell = (rows[r][col] || '').trim();
+      const classCell = (rows[r][col + 1] || '').trim();
+      const remarkCell = (rows[r][col + 2] || '').trim();
+
+      if (!dateCell) continue;
+
+      // Parse MM/DD/YY date
+      const dateParts = dateCell.split('/');
+      if (dateParts.length !== 3) continue;
+      let [mm, dd, yy] = dateParts.map(p => parseInt(p, 10));
+      if (isNaN(mm) || isNaN(dd) || isNaN(yy)) continue;
+      const fullYear = yy < 70 ? 2000 + yy : 1900 + yy;
+      const dateObj = new Date(fullYear, mm - 1, dd);
+      if (isNaN(dateObj.getTime())) continue;
+
+      // Check if there was an actual class (not just payment)
+      const hasClass = classCell && classCell.toLowerCase() !== '' && !classCell.toLowerCase().startsWith('no class');
+      const isPaidMarker = /paid\s*\(\d+\)/i.test(classCell) || /paid\s*\(\d+\)/i.test(remarkCell);
+
+      if (isPaidMarker) hasPaid = true;
+
+      if (hasClass && (!latestClassDate || dateObj > latestClassDate)) {
+        latestClassDate = dateObj;
+      }
+    }
+
+    const nameKey = studentName.toLowerCase();
+    if (latestClassDate) {
+      const y = latestClassDate.getFullYear();
+      const m = String(latestClassDate.getMonth() + 1).padStart(2, '0');
+      const d = String(latestClassDate.getDate()).padStart(2, '0');
+      lastClassByStudent[nameKey] = `${y}-${m}-${d}`;
+    }
+    paymentByStudent[nameKey] = hasPaid;
+  }
+  return { lastClassByStudent, paymentByStudent };
+}
+
+// Calculate the next class date based on classDays (e.g. "Mon & Thu", "Saturday Only", "Wed & Sat")
+function calcNextClass(lastClassDateStr, classDaysStr) {
+  if (!lastClassDateStr || !classDaysStr) return '';
+  const dayMap = { 'sun': 0, 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6,
+                   'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 'friday': 5, 'saturday': 6 };
+  const parts = classDaysStr.toLowerCase().replace(/only/gi, '').split(/[&,\s]+/).filter(Boolean);
+  const targetDays = [];
+  for (const p of parts) {
+    const trimmed = p.trim();
+    if (dayMap[trimmed] !== undefined) targetDays.push(dayMap[trimmed]);
+  }
+  if (targetDays.length === 0) return '';
+
+  const lastDate = new Date(lastClassDateStr + 'T00:00:00');
+  if (isNaN(lastDate.getTime())) return '';
+
+  // Find the next occurrence of one of the target days after lastDate
+  for (let i = 1; i <= 14; i++) {
+    const candidate = new Date(lastDate);
+    candidate.setDate(lastDate.getDate() + i);
+    if (targetDays.includes(candidate.getDay())) {
+      const y = candidate.getFullYear();
+      const m = String(candidate.getMonth() + 1).padStart(2, '0');
+      const d = String(candidate.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+  }
+  return '';
+}
+
+// Fetch and merge attendance data into the students array
+async function fetchAndMergeAttendance(studentsArr) {
+  try {
+    console.log('[Attendance] Fetching attendance CSV...');
+    const resp = await fetch(ATTENDANCE_SHEET_CSV_URL, { redirect: 'follow' });
+    const text = await resp.text();
+    if (!text || text.trim().startsWith('<')) {
+      console.warn('[Attendance] Got HTML instead of CSV, skipping.');
+      return studentsArr;
+    }
+    const { lastClassByStudent, paymentByStudent } = parseAttendanceCsv(text);
+    console.log('[Attendance] Parsed last class dates:', lastClassByStudent);
+    console.log('[Attendance] Parsed payment status:', paymentByStudent);
+
+    return studentsArr.map(s => {
+      const nameKey = (s.name || '').toLowerCase();
+      const firstName = nameKey.split(' ')[0];
+
+      // Try exact match first, then first-name match
+      let matchKey = null;
+      if (lastClassByStudent[nameKey]) matchKey = nameKey;
+      else {
+        for (const k of Object.keys(lastClassByStudent)) {
+          if (k.split(' ')[0] === firstName || k.includes(firstName) || nameKey.includes(k.split(' ')[0])) {
+            matchKey = k;
+            break;
+          }
+        }
+      }
+
+      if (!matchKey) {
+        // Still compute nextClassDate from existing lastClassDate
+        return { ...s, nextClassDate: calcNextClass(s.lastClassDate, s.classDays) };
+      }
+
+      const attendanceLastClass = lastClassByStudent[matchKey];
+      // Use whichever is newer
+      let bestLastClass = s.lastClassDate || '';
+      if (attendanceLastClass) {
+        if (!bestLastClass || attendanceLastClass > bestLastClass) {
+          bestLastClass = attendanceLastClass;
+        }
+      }
+
+      const nextClass = calcNextClass(bestLastClass, s.classDays);
+      const feeStatus = paymentByStudent[matchKey] ? 'paid' : s.feeStatus;
+
+      return { ...s, lastClassDate: bestLastClass, nextClassDate: nextClass, feeStatus };
+    });
+  } catch (err) {
+    console.error('[Attendance] Fetch failed:', err);
+    // Still compute nextClassDate from existing data
+    return studentsArr.map(s => ({ ...s, nextClassDate: calcNextClass(s.lastClassDate, s.classDays) }));
+  }
+}
+
 // --- TUITION PACKAGE OPTIONS ---
 const PACKAGE_OPTIONS = [{
 id: 'pkg_4',
@@ -1744,7 +1911,7 @@ try {
 const parsed = JSON.parse(local);
 if (Array.isArray(parsed)) {
 const clean = parsed.filter(s => s && s.name && !s.name.includes('function') && !s.name.includes('typeof') && !s.name.includes('<') && s.name.length <= 50);
-return clean;
+return clean.map(s => ({ ...s, nextClassDate: s.nextClassDate || calcNextClass(s.lastClassDate, s.classDays) }));
 }
 } catch (e) {}
 }
@@ -1821,8 +1988,8 @@ if (!url || !url.trim() || url.includes('docs.google.com/spreadsheets/d/')) {
 return;
 }
 try {
-const studentsHeaders = ['Student Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status', 'Total Past Cycles', 'General Remarks'];
-const studentsData = (studs || []).map(s => [s.name || '', formatDateToYYYYMMDD(s.dob), s.age || 0, s.email || '', s.phone || '', formatDateToYYYYMMDD(s.joiningDate), s.musicClass || '', s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${Math.min(s.completedClassesCount || 0, getPackageLimit(s.packageType))} of ${getPackageLimit(s.packageType)}`, formatDateToYYYYMMDD(s.lastClassDate), s.feeStatus || 'paid', (s.packageHistory || []).length, s.remarks || '']);
+const studentsHeaders = ['Student Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Next Class Date', 'Payment Status', 'Total Past Cycles', 'General Remarks'];
+const studentsData = (studs || []).map(s => [s.name || '', formatDateToYYYYMMDD(s.dob), s.age || 0, s.email || '', s.phone || '', formatDateToYYYYMMDD(s.joiningDate), s.musicClass || '', s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${Math.min(s.completedClassesCount || 0, getPackageLimit(s.packageType))} of ${getPackageLimit(s.packageType)}`, formatDateToYYYYMMDD(s.lastClassDate), s.nextClassDate || '', s.feeStatus || 'paid', (s.packageHistory || []).length, s.remarks || '']);
 const historyHeaders = ['Date', 'Student Name', 'Music Lesson Type', 'Attendance Status', 'Daily Class Note / Song / Remarks'];
 const historyData = [];
 
@@ -3041,9 +3208,12 @@ remarks: imp.remarks || existing.remarks || ''
 return imp;
 });
 
+// Merge attendance data (last class, next class, payment) from the Attendance Sheet
+const withAttendance = await fetchAndMergeAttendance(mergedStudents);
+
 // Update local state directly WITHOUT calling autoPushToGoogleSheet (prevents feedback loop overwrite!)
-setStudents(mergedStudents);
-localStorage.setItem('harmony_music_students', JSON.stringify(mergedStudents));
+setStudents(withAttendance);
+localStorage.setItem('harmony_music_students', JSON.stringify(withAttendance));
 if (targetUrl) localStorage.setItem('harmony_sheet_url', targetUrl);
 if (!silent) alert(`🎧 Loaded ${importedStudents.length} students from Google Sheet! Local data updated.`);
 } else {
@@ -3102,8 +3272,8 @@ if (students.length === 0) {
 alert('No student records to copy!');
 return;
 }
-const headers = ['Student Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status', 'Total Past Cycles', 'General Remarks'];
-const rows = students.map(s => [s.name, formatDateToYYYYMMDD(s.dob), s.age, s.email, s.phone, formatDateToYYYYMMDD(s.joiningDate), s.musicClass, s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${Math.min(s.completedClassesCount || 0, getPackageLimit(s.packageType))} of ${getPackageLimit(s.packageType)}`, formatDateToYYYYMMDD(s.lastClassDate), s.feeStatus, (s.packageHistory || []).length, s.remarks || '']);
+const headers = ['Student Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Next Class Date', 'Payment Status', 'Total Past Cycles', 'General Remarks'];
+const rows = students.map(s => [s.name, formatDateToYYYYMMDD(s.dob), s.age, s.email, s.phone, formatDateToYYYYMMDD(s.joiningDate), s.musicClass, s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${Math.min(s.completedClassesCount || 0, getPackageLimit(s.packageType))} of ${getPackageLimit(s.packageType)}`, formatDateToYYYYMMDD(s.lastClassDate), s.nextClassDate || '', s.feeStatus, (s.packageHistory || []).length, s.remarks || '']);
 const tsvText = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
 if (navigator.clipboard && navigator.clipboard.writeText) {
 navigator.clipboard.writeText(tsvText).then(() => {
@@ -3116,8 +3286,8 @@ handleExportCSV();
 }
 };
 const handleExportCSV = () => {
-const headers = ['Student Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Payment Status', 'Total Past Cycles', 'General Remarks'];
-const rows = students.map(s => [s.name, formatDateToYYYYMMDD(s.dob), s.age, s.email, s.phone, formatDateToYYYYMMDD(s.joiningDate), s.musicClass, s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${Math.min(s.completedClassesCount || 0, getPackageLimit(s.packageType))} of ${getPackageLimit(s.packageType)}`, formatDateToYYYYMMDD(s.lastClassDate), s.feeStatus, (s.packageHistory || []).length, s.remarks || '']);
+const headers = ['Student Name', 'Date of Birth', 'Age', 'Email ID', 'Phone Number', 'Joining Date', 'Music Lesson Type', 'Class Days Schedule', 'Tuition Package', 'Package Fee (INR)', 'Classes Used', 'Last Class Date', 'Next Class Date', 'Payment Status', 'Total Past Cycles', 'General Remarks'];
+const rows = students.map(s => [s.name, formatDateToYYYYMMDD(s.dob), s.age, s.email, s.phone, formatDateToYYYYMMDD(s.joiningDate), s.musicClass, s.classDays || 'Mon & Thu', s.packageType || '4 Classes Package (₹6,000)', s.packageAmount || 6000, `${Math.min(s.completedClassesCount || 0, getPackageLimit(s.packageType))} of ${getPackageLimit(s.packageType)}`, formatDateToYYYYMMDD(s.lastClassDate), s.nextClassDate || '', s.feeStatus, (s.packageHistory || []).length, s.remarks || '']);
 const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n');
 const blob = new Blob([csvContent], {
 type: 'text/csv;charset=utf-8;'
@@ -3846,7 +4016,7 @@ fontSize: '0.725rem',
 color: '#166534',
 marginTop: '0.1rem'
 }
-}, "Last Class: ", /*#__PURE__*/React.createElement("strong", null, formatDateToYYYYMMDD(selectedUserModeStudent.lastClassDate) || 'None'))), /*#__PURE__*/React.createElement("div", {
+}, "Last Class: ", /*#__PURE__*/React.createElement("strong", null, formatDateToYYYYMMDD(selectedUserModeStudent.lastClassDate) || 'None'), " | Next: ", /*#__PURE__*/React.createElement("strong", { style: { color: '#059669' } }, selectedUserModeStudent.nextClassDate || '—'))), /*#__PURE__*/React.createElement("div", {
 style: {
 background: selectedUserModeStudent.feeStatus === 'pending' ? '#FEF2F2' : '#EFF6FF',
 padding: '0.85rem',
@@ -5253,6 +5423,10 @@ padding: '0.75rem'
 style: {
 padding: '0.75rem'
 }
+}, "Next Class"), /*#__PURE__*/React.createElement("th", {
+style: {
+padding: '0.75rem'
+}
 }, "Payment Status Buttons"), /*#__PURE__*/React.createElement("th", {
 style: {
 padding: '0.75rem',
@@ -5305,6 +5479,13 @@ fontSize: '0.8rem',
 color: 'var(--text-muted)'
 }
 }, s.lastClassDate || 'N/A'), /*#__PURE__*/React.createElement("td", {
+style: {
+padding: '0.75rem',
+fontSize: '0.8rem',
+color: '#059669',
+fontWeight: 600
+}
+}, s.nextClassDate || '—'), /*#__PURE__*/React.createElement("td", {
 style: {
 padding: '0.75rem'
 }
@@ -5382,7 +5563,7 @@ alignItems: 'center',
 fontSize: '0.775rem',
 color: 'var(--text-muted)'
 }
-}, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCC5 Last Class: ", /*#__PURE__*/React.createElement("strong", null, s.lastClassDate || 'N/A')), /*#__PURE__*/React.createElement("span", {
+}, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCC5 Last Class: ", /*#__PURE__*/React.createElement("strong", null, s.lastClassDate || 'N/A')), /*#__PURE__*/React.createElement("span", { style: { color: '#059669', fontWeight: 600 } }, "\uD83D\uDD1C Next: ", /*#__PURE__*/React.createElement("strong", null, s.nextClassDate || '—')), /*#__PURE__*/React.createElement("span", {
 style: {
 fontWeight: 700,
 color: isExpired ? '#B91C1C' : 'var(--text-main)'
