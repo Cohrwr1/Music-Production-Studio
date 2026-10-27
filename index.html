@@ -1926,15 +1926,31 @@ completedClassesCount: 0
 const [students, setStudents] = useState(() => {
 const local = localStorage.getItem('harmony_music_students');
 if (local) {
-try {
-const parsed = JSON.parse(local);
-if (Array.isArray(parsed)) {
-const clean = parsed.filter(s => s && s.name && !s.name.includes('function') && !s.name.includes('typeof') && !s.name.includes('<') && s.name.length <= 50);
-return clean.map(s => ({ ...s, nextClassDate: s.nextClassDate || calcNextClass(s.lastClassDate, s.classDays) }));
+  try {
+    const parsed = JSON.parse(local);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const clean = parsed.filter(s => s && s.name && !s.name.includes('function') && !s.name.includes('typeof') && !s.name.includes('<') && s.name.length <= 50);
+      return clean.map(s => ({ ...s, nextClassDate: s.nextClassDate || calcNextClass(s.lastClassDate, s.classDays) }));
+    }
+  } catch (e) {}
 }
-} catch (e) {}
-}
-return [];
+// Default seed: The 8 real studio students with their pre-parsed backlog cycles and calculated next class
+const initialSeed = [
+  { id: 'music_std_meghna', name: 'Meghna Ann Bajaj', dob: '2000-01-01', age: 26, email: 'meghna.bajaj@gmail.com', phone: '+91 9800000001', joiningDate: '2025-03-21', musicClass: 'Vocal Lessons', classDays: 'Thu', packageType: '4 Classes Package (₹6,000)', packageAmount: 6000, completedClassesCount: 2, lastClassDate: '2026-10-11', nextClassDate: '2026-10-15', feeStatus: 'pending', avatarColor: '#6366F1' },
+  { id: 'music_std_aanish', name: 'Aanish Parmar', dob: '2002-01-01', age: 24, email: 'aanish.parmar@gmail.com', phone: '+91 9800000002', joiningDate: '2025-09-11', musicClass: 'Piano Lessons', classDays: 'Thu', packageType: '12 Classes Package (₹15,000)', packageAmount: 15000, completedClassesCount: 11, lastClassDate: '2026-10-01', nextClassDate: '2026-10-08', feeStatus: 'pending', avatarColor: '#0284C7' },
+  { id: 'music_std_jia', name: 'Jia Gupta', dob: '2005-01-01', age: 21, email: 'jia.gupta@gmail.com', phone: '+91 9800000003', joiningDate: '2026-05-21', musicClass: 'Vocal Lessons', classDays: 'Thu', packageType: '4 Classes Package (₹6,000)', packageAmount: 6000, completedClassesCount: 4, lastClassDate: '2026-10-15', nextClassDate: '2026-10-22', feeStatus: 'pending', avatarColor: '#10B981' },
+  { id: 'music_std_rishaan', name: 'Rishaan Aggarwal', dob: '2010-01-01', age: 16, email: 'rishaan.aggarwal@gmail.com', phone: '+91 9800000004', joiningDate: '2024-06-06', musicClass: 'Piano Lessons', classDays: 'Wed', packageType: '12 Classes Package (₹15,000)', packageAmount: 15000, completedClassesCount: 7, lastClassDate: '2026-10-08', nextClassDate: '2026-10-14', feeStatus: 'paid', avatarColor: '#F59E0B' },
+  { id: 'music_std_anandya', name: 'Anandya', dob: '2008-01-01', age: 18, email: 'anandya@gmail.com', phone: '+91 9800000005', joiningDate: '2025-10-11', musicClass: 'Vocal Lessons', classDays: 'Sat', packageType: '12 Classes Package (₹15,000)', packageAmount: 15000, completedClassesCount: 11, lastClassDate: '2026-09-26', nextClassDate: '2026-10-03', feeStatus: 'paid', avatarColor: '#8B5CF6' },
+  { id: 'music_std_abhinav', name: 'Abhinav', dob: '1998-01-01', age: 28, email: 'abhinav@gmail.com', phone: '+91 9800000006', joiningDate: '2026-08-22', musicClass: 'App Lessons', classDays: 'Sun', packageType: '12 Classes Package (₹15,000)', packageAmount: 15000, completedClassesCount: 10, lastClassDate: '2026-10-18', nextClassDate: '2026-10-25', feeStatus: 'paid', avatarColor: '#EC4899' },
+  { id: 'music_std_meeraya', name: 'Meeraya Kapoor', dob: '2012-01-01', age: 14, email: 'meeraya.kapoor@gmail.com', phone: '+91 9800000007', joiningDate: '2026-09-05', musicClass: 'Piano Lessons', classDays: 'Sat', packageType: '12 Classes Package (₹15,000)', packageAmount: 15000, completedClassesCount: 7, lastClassDate: '2026-10-17', nextClassDate: '2026-10-24', feeStatus: 'paid', avatarColor: '#14B8A6' },
+  { id: 'music_std_stephanie', name: 'Stephanie Samuel', dob: '2004-01-01', age: 22, email: 'stephanie.samuel@gmail.com', phone: '+91 9800000008', joiningDate: '2026-10-06', musicClass: 'Vocal Lessons', classDays: 'Thu', packageType: '4 Classes Package (₹6,000)', packageAmount: 6000, completedClassesCount: 3, lastClassDate: '2026-10-15', nextClassDate: '2026-10-22', feeStatus: 'paid', avatarColor: '#F97316' }
+].map(s => {
+  const bKey = Object.keys(BACKLOG_IMPORT_DATA || {}).find(k => k.toLowerCase().startsWith(s.name.toLowerCase().split(' ')[0]));
+  const history = bKey && BACKLOG_IMPORT_DATA[bKey] ? (BACKLOG_IMPORT_DATA[bKey].packageHistory || []) : [];
+  return { ...s, packageHistory: history };
+});
+try { localStorage.setItem('harmony_music_students', JSON.stringify(initialSeed)); } catch(e) {}
+return initialSeed;
 });
 const [attendance, setAttendance] = useState(() => {
 const local = localStorage.getItem('harmony_music_attendance');
@@ -1971,10 +1987,22 @@ let isMounted = true;
 
 // Auto-fetch latest live data from Google Sheets upon app mount / launch
 const initialSync = async () => {
-const currentSheetUrl = localStorage.getItem('harmony_sheet_url') || sheetUrl;
-if (currentSheetUrl && currentSheetUrl.trim()) {
-await handleFetchFromGoogleSheet(currentSheetUrl.trim(), true);
-}
+  // Always fetch latest live Attendance Sheet dates (Last Class & Next Class) on startup
+  try {
+    let currentStudents = [];
+    const ls = localStorage.getItem('harmony_music_students');
+    if (ls) { const p = JSON.parse(ls); if (Array.isArray(p) && p.length > 0) currentStudents = p; }
+    if (currentStudents.length > 0) {
+      const withAtt = await fetchAndMergeAttendance(currentStudents);
+      setStudents(withAtt);
+      localStorage.setItem('harmony_music_students', JSON.stringify(withAtt));
+    }
+  } catch(e) { console.error('Initial attendance fetch failed:', e); }
+
+  const currentSheetUrl = localStorage.getItem('harmony_sheet_url') || sheetUrl;
+  if (currentSheetUrl && currentSheetUrl.trim()) {
+    await handleFetchFromGoogleSheet(currentSheetUrl.trim(), true);
+  }
 };
 initialSync();
 
@@ -2240,8 +2268,14 @@ function handleImportPreParsedBacklog() {
   if (userRole !== 'owner') { alert('🔒 Owner Mode only.'); return; }
   const keys = Object.keys(BACKLOG_IMPORT_DATA);
   let importCount = 0;
-  let alreadyHadData = 0;
-  const updatedStudents = students.map(student => {
+
+  let baseStudents = students;
+  try {
+    const ls = localStorage.getItem('harmony_music_students');
+    if (ls) { const p = JSON.parse(ls); if (Array.isArray(p) && p.length > 0) baseStudents = p; }
+  } catch(e) {}
+
+  const updatedStudents = baseStudents.map(student => {
     const nameKey = (student.name || '').toLowerCase();
     const firstNameS = nameKey.split(' ')[0];
     const match = keys.find(bKey => {
@@ -2250,26 +2284,53 @@ function handleImportPreParsedBacklog() {
       return firstNameB === firstNameS || bLower.includes(firstNameS) || nameKey.includes(firstNameB);
     });
     if (!match) return student;
-    const existing = student.packageHistory || [];
-    if (existing.length > 0) { alreadyHadData++; return student; }
     const backlog = BACKLOG_IMPORT_DATA[match];
-    const history = (backlog.packageHistory || []).map((c, idx) => ({
-      ...c,
-      cycleId: idx + 1
-    }));
+    const history = (backlog.packageHistory || []).map((c, idx) => ({ ...c, cycleId: idx + 1 }));
     importCount++;
     return { ...student, packageHistory: history };
   });
-  if (importCount === 0 && alreadyHadData > 0) {
-    alert(`ℹ️ All ${alreadyHadData} student(s) already have backlog history. No new data imported.\n\nTo re-import, first clear a student's backlog history in the Backlog tab.`);
-    return;
+
+  const existingNames = updatedStudents.map(s => (s.name || '').toLowerCase());
+  for (const bKey of keys) {
+    const bLower = bKey.toLowerCase();
+    const bFirst = bLower.split(' ')[0];
+    const found = existingNames.some(en => en.startsWith(bFirst) || en.includes(bFirst));
+    if (!found) {
+      const backlog = BACKLOG_IMPORT_DATA[bKey];
+      const history = (backlog.packageHistory || []).map((c, idx) => ({ ...c, cycleId: idx + 1 }));
+      const lastCycle = history[history.length - 1] || {};
+      const newStudent = {
+        id: `music_std_${bFirst}`,
+        name: bKey,
+        dob: '2000-01-01',
+        age: 25,
+        email: `${bFirst}@gmail.com`,
+        phone: '+91 9800000000',
+        joiningDate: history[0] ? history[0].startDate : '2025-01-01',
+        musicClass: 'Vocal Lessons',
+        classDays: 'Thu',
+        packageType: lastCycle.packageType || '4 Classes Package (₹6,000)',
+        packageAmount: lastCycle.packageAmount || 6000,
+        completedClassesCount: lastCycle.completedCount || 0,
+        lastClassDate: lastCycle.endDate || '',
+        nextClassDate: calcNextClass(lastCycle.endDate || '', 'Thu'),
+        feeStatus: lastCycle.feeStatus || 'paid',
+        packageHistory: history,
+        avatarColor: '#6366F1'
+      };
+      updatedStudents.push(newStudent);
+      importCount++;
+    }
   }
+
   setStudents(updatedStudents);
   localStorage.setItem('harmony_music_students', JSON.stringify(updatedStudents));
   setLastUserEditTimestamp(Date.now());
   const bUrl = backlogSheetUrl || localStorage.getItem('harmony_backlog_sheet_url') || '';
   if (bUrl) autoPushBacklogToSheet(bUrl, updatedStudents);
-  alert(`✅ Backlog imported for ${importCount} student(s)!\n${alreadyHadData > 0 ? alreadyHadData + ' student(s) already had data (skipped).' : ''}\n\nGo to any student card and click their Backlog history to verify.`);
+  alert(`✅ Backlog imported for ${importCount} student(s)!
+
+All past packages, completed class counts, and cycles are restored.`);
   setActiveTab('students');
 }
 
