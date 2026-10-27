@@ -1471,84 +1471,103 @@ const MUSIC_LESSON_OPTIONS = ['Vocal Lessons', 'Piano Lessons', 'App Lessons'];
 // ── ATTENDANCE SHEET INTEGRATION ──
 const ATTENDANCE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1aCHYJrvjzg1goDalQpwXAPenEU0At2xAkzU-3ESdcHQ/gviz/tq?tqx=out:csv';
 
-// Parse the horizontal attendance CSV: each student occupies 3 columns (Date, Classes, Remarks)
+// Parse the horizontal attendance CSV.
+// Structure: first 4 cols are junk (Column1/2/3 + blank), then groups of 4 per student
+// (dateCol, classesCol, remarksCol, blankSeparator). Dates use MM.DD.YY dot format.
 function parseAttendanceCsv(csvText) {
-  const rows = [];
-  const lines = csvText.split('\n');
-  // Simple CSV line parser handling quoted fields
   function parseLine(line) {
     const cells = [];
     let cur = '', inQ = false;
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
-      if (ch === '"') { inQ = !inQ; continue; }
+      if (ch === '"' && !inQ) { inQ = true; continue; }
+      if (ch === '"' && inQ) { if (line[i+1] === '"') { cur += '"'; i++; } else { inQ = false; } continue; }
       if (ch === ',' && !inQ) { cells.push(cur.trim()); cur = ''; continue; }
       cur += ch;
     }
     cells.push(cur.trim());
     return cells;
   }
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    rows.push(parseLine(trimmed));
+  function parseDate(str) {
+    if (!str) return null;
+    str = str.trim();
+    // Match MM.DD.YY or MM/DD/YY or MM-DD-YY
+    const m = str.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/);
+    if (!m) return null;
+    let mm = parseInt(m[1], 10), dd = parseInt(m[2], 10), yy = parseInt(m[3], 10);
+    const yyyy = yy < 100 ? (yy < 70 ? 2000 + yy : 1900 + yy) : yy;
+    if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+    const d = new Date(yyyy, mm - 1, dd);
+    return isNaN(d.getTime()) ? null : d;
   }
-  if (rows.length < 2) return { lastClassByStudent: {}, paymentByStudent: {} };
+  function toYMD(d) {
+    if (!d) return '';
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  function extractName(cell) {
+    // Remove known keywords and any dates from the cell to get just the name
+    let s = cell.replace(/\b(dates?|classes?|remarks?|columns?|no\s+class|trial|paid.*|\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4})\b.*/gi, '').trim();
+    return s.split(/\s+/).filter(Boolean).join(' ');
+  }
 
-  const headerRow = rows[0]; // student names appear every 3 columns
+  const lines = csvText.split('\n').filter(l => l.trim());
+  if (lines.length < 2) return { lastClassByStudent: {}, paymentByStudent: {} };
+  const rows = lines.map(parseLine);
+  const headerRow = rows[0];
+
   const lastClassByStudent = {};
   const paymentByStudent = {};
 
-  // Iterate columns in steps of 3
-  for (let col = 0; col < headerRow.length; col += 3) {
-    let studentName = (headerRow[col] || '').replace(/["']/g, '').trim();
-    if (!studentName) continue;
-    // The header might have trailing info, take just the name
-    studentName = studentName.split('(')[0].trim();
+  // Students start at col 4 (after 3 junk cols + 1 blank), step of 4
+  for (let col = 4; col < headerRow.length; col += 4) {
+    const headerCell = (headerRow[col] || '').trim();
+    if (!headerCell) continue;
+    const name = extractName(headerCell);
+    if (!name || name.length < 2) continue;
 
-    let latestClassDate = null;
+    let latestDate = null;
     let hasPaid = false;
 
-    // Go through data rows for this student's columns
+    // Extract any dates embedded in the header row cells
+    const allHeaderText = (headerRow[col] || '') + ' ' + (headerRow[col+1] || '') + ' ' + (headerRow[col+2] || '');
+    const headerDates = allHeaderText.match(/\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}/g) || [];
+    for (const ds of headerDates) {
+      const d = parseDate(ds); if (d && (!latestDate || d > latestDate)) latestDate = d;
+    }
+    if (/paid\s*\(\d+\)/i.test(allHeaderText)) hasPaid = true;
+
+    // Process all data rows for this student
     for (let r = 1; r < rows.length; r++) {
-      const dateCell = (rows[r][col] || '').trim();
-      const classCell = (rows[r][col + 1] || '').trim();
-      const remarkCell = (rows[r][col + 2] || '').trim();
+      const row = rows[r];
+      const dateCell = (row[col] || '').trim();
+      const classCell = (row[col+1] || '').trim();
+      const remarkCell = (row[col+2] || '').trim();
 
-      if (!dateCell) continue;
+      // Skip sub-header rows
+      if (/^(dates?|date)$/i.test(dateCell)) continue;
 
-      // Parse MM/DD/YY date
-      const dateParts = dateCell.split('/');
-      if (dateParts.length !== 3) continue;
-      let [mm, dd, yy] = dateParts.map(p => parseInt(p, 10));
-      if (isNaN(mm) || isNaN(dd) || isNaN(yy)) continue;
-      const fullYear = yy < 70 ? 2000 + yy : 1900 + yy;
-      const dateObj = new Date(fullYear, mm - 1, dd);
-      if (isNaN(dateObj.getTime())) continue;
+      const allText = dateCell + ' ' + classCell + ' ' + remarkCell;
+      if (/paid\s*\(\d+\)/i.test(allText)) hasPaid = true;
 
-      // Check if there was an actual class (not just payment)
-      const hasClass = classCell && classCell.toLowerCase() !== '' && !classCell.toLowerCase().startsWith('no class');
-      const isPaidMarker = /paid\s*\(\d+\)/i.test(classCell) || /paid\s*\(\d+\)/i.test(remarkCell);
+      // Only count as class if not cancelled/no class
+      const isCancelled = /cancel|no\s*class|absent/i.test(classCell + ' ' + remarkCell);
+      const isClassEntry = classCell && !/^(classes?|remarks?)$/i.test(classCell);
 
-      if (isPaidMarker) hasPaid = true;
-
-      if (hasClass && (!latestClassDate || dateObj > latestClassDate)) {
-        latestClassDate = dateObj;
+      const d = parseDate(dateCell);
+      if (d && !isCancelled && isClassEntry) {
+        if (!latestDate || d > latestDate) latestDate = d;
       }
     }
 
-    const nameKey = studentName.toLowerCase();
-    if (latestClassDate) {
-      const y = latestClassDate.getFullYear();
-      const m = String(latestClassDate.getMonth() + 1).padStart(2, '0');
-      const d = String(latestClassDate.getDate()).padStart(2, '0');
-      lastClassByStudent[nameKey] = `${y}-${m}-${d}`;
-    }
+    const nameKey = name.toLowerCase();
+    if (latestDate) lastClassByStudent[nameKey] = toYMD(latestDate);
     paymentByStudent[nameKey] = hasPaid;
   }
+
+  console.log('[Attendance] Parsed names:', Object.keys(lastClassByStudent));
+  console.log('[Attendance] Last classes:', lastClassByStudent);
   return { lastClassByStudent, paymentByStudent };
 }
-
 // Calculate the next class date based on classDays (e.g. "Mon & Thu", "Saturday Only", "Wed & Sat")
 function calcNextClass(lastClassDateStr, classDaysStr) {
   if (!lastClassDateStr || !classDaysStr) return '';
@@ -3193,8 +3212,11 @@ parsedRows = parseCSVRows(textData);
 const importedStudents = processRowsIntoStudents(parsedRows);
 if (importedStudents.length > 0) {
 // Smart-merge fetched rows with current local state to preserve rich properties
+// Always read from localStorage so periodic polls don't lose locally-imported backlog data
+let latestStudents = students;
+try { const _ls = localStorage.getItem('harmony_music_students'); if (_ls) { const _p = JSON.parse(_ls); if (Array.isArray(_p) && _p.length > 0) latestStudents = _p; } } catch(_e) {}
 const mergedStudents = importedStudents.map(imp => {
-const existing = students.find(s => s.id === imp.id || s.name && imp.name && s.name.toLowerCase() === imp.name.toLowerCase());
+const existing = latestStudents.find(s => s.id === imp.id || s.name && imp.name && s.name.toLowerCase() === imp.name.toLowerCase());
 if (existing) {
 return {
 ...imp,
