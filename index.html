@@ -313,7 +313,7 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
     // Central Multi-Device Database URL (Firebase Realtime Database REST API)
-    const DEFAULT_FIREBASE_URL = '';
+    const DEFAULT_FIREBASE_URL = 'https://music-studio-d9026-default-rtdb.firebaseio.com/studio_data.json';
 
     // Automatically ensure Firebase URL ends with /studio_data.json for REST API
     function normalizeCloudUrl(rawUrl) {
