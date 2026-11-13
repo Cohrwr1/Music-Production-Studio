@@ -346,6 +346,33 @@
 
     // Helper: Calculate Next Class Date given Weekly Day (e.g. 'Thursday' or 'Saturday')
     // If today is Saturday 14 Nov, next class is Saturday 21 Nov!
+    // Bulletproof Local (IST) Date Formatter - NEVER uses UTC toISOString() to avoid 1-day previous bug!
+    function getLocalDateString(d = new Date()) {
+      if (!d) return '';
+      if (typeof d === 'string') {
+        d = parseLocalDate(d);
+      }
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // Bulletproof Local Date Parser (sets time to 12:00 PM local noon to prevent midnight/timezone shifts)
+    function parseLocalDate(dateStr) {
+      if (!dateStr) return new Date();
+      if (dateStr instanceof Date) return dateStr;
+      const clean = String(dateStr).split('T')[0].trim();
+      const parts = clean.split('-');
+      if (parts.length === 3) {
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        return new Date(y, m, d, 12, 0, 0);
+      }
+      return new Date();
+    }
+
     // Helper: Calculate target day in THIS current week
     function calculateThisWeekClassDate(weeklyDay) {
       if (!weeklyDay) return '';
@@ -360,11 +387,12 @@
       if (diff < 0) {
         diff += 7; // has already passed this week, so upcoming occurrence
       }
-      const nextDate = new Date(today);
-      nextDate.setDate(today.getDate() + diff);
-      return nextDate.toISOString().split('T')[0];
+      const targetDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + diff, 12, 0, 0);
+      return getLocalDateString(targetDate);
     }
 
+    // Helper: Calculate Next Class Date given Weekly Day (e.g. 'Thursday' or 'Saturday')
+    // If today is Saturday 14 Nov and student has class every Thursday, next class is Thursday 19 Nov!
     function calculateNextClassDate(weeklyDay, baseDateStr = null) {
       if (!weeklyDay) return '';
       const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -372,21 +400,49 @@
       const targetDay = days.indexOf(cleanDay);
       if (targetDay === -1) return '';
 
-      const base = baseDateStr ? new Date(baseDateStr) : new Date();
+      const base = baseDateStr ? parseLocalDate(baseDateStr) : new Date();
       const currentDay = base.getDay();
       let diff = targetDay - currentDay;
       if (diff <= 0) {
         diff += 7; // Next occurrence next week
       }
-      const nextDate = new Date(base);
-      nextDate.setDate(base.getDate() + diff);
-      return nextDate.toISOString().split('T')[0];
+      const nextDate = new Date(base.getFullYear(), base.getMonth(), base.getDate() + diff, 12, 0, 0);
+      return getLocalDateString(nextDate);
+    }
+
+    // Helper: Formats package display cleanly showing class count and rupees
+    // Guarantees that "Custom Package" always specifies how many classes and how many rupees!
+    function formatPackageDisplay(pkgType, limit, amount) {
+      if (!pkgType && !limit && !amount) return '4 Classes Package (₹6,000)';
+      
+      const numLimit = Number(limit) || 4;
+      const numAmount = amount !== undefined && amount !== null ? Number(amount) : null;
+      const formattedAmount = numAmount !== null ? `₹${numAmount.toLocaleString('en-IN')}` : '';
+
+      // If pkgType already has detailed info like "Custom Package (8 Classes - ₹10,000)" or "4 Classes Package (₹6,000)"
+      if (pkgType && pkgType.includes('(') && pkgType.includes(')')) {
+        return pkgType;
+      }
+
+      // If it's a generic "Custom Package" or "Custom Classes Package" without details
+      if (!pkgType || pkgType.toLowerCase().includes('custom')) {
+        if (formattedAmount) {
+          return `Custom Package (${numLimit} Classes - ${formattedAmount})`;
+        }
+        return `Custom Package (${numLimit} Classes)`;
+      }
+
+      // Standard package
+      if (formattedAmount) {
+        return `${pkgType} (${formattedAmount})`;
+      }
+      return pkgType;
     }
 
     function formatReadableDate(dateStr) {
       if (!dateStr) return 'Not scheduled';
       try {
-        const d = new Date(dateStr);
+        const d = parseLocalDate(dateStr);
         return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
       } catch (e) {
         return dateStr;
@@ -472,7 +528,7 @@
       const [isOwnerAdminOpen, setIsOwnerAdminOpen] = useState(false);
 
       const [selectedDate, setSelectedDate] = useState(() => {
-        return new Date().toISOString().split('T')[0];
+        return getLocalDateString();
       });
 
       // Modals
@@ -995,7 +1051,28 @@
         const computedNext = data.nextClassDate || calculateNextClassDate(data.weeklyDay || 'Thursday');
 
         if (editingStudent) {
-          setStudents(students.map(s => s.id === editingStudent.id ? { ...data, nextClassDate: computedNext, id: editingStudent.id } : s));
+          setStudents(students.map(s => {
+            if (s.id === editingStudent.id) {
+              let updatedHistory = s.packageHistory ? [...s.packageHistory] : [];
+              if (updatedHistory.length > 0) {
+                const lastIdx = updatedHistory.length - 1;
+                updatedHistory[lastIdx] = {
+                  ...updatedHistory[lastIdx],
+                  packageType: data.packageType,
+                  packageAmount: data.packageAmount,
+                  limit: data.packageLimit
+                };
+              }
+              return {
+                ...s,
+                ...data,
+                nextClassDate: computedNext,
+                id: editingStudent.id,
+                packageHistory: updatedHistory.length > 0 ? updatedHistory : s.packageHistory
+              };
+            }
+            return s;
+          }));
           showToast(`Student ${data.name} updated!`, 'success');
         } else {
           const newId = 'std_' + Date.now();
@@ -1609,13 +1686,11 @@
       // Compute day name, e.g. "Saturday", and check if today or past
       const selectedDayInfo = useMemo(() => {
         if (!selectedDate) return { dayName: '', isToday: false, isPast: false, formatted: '' };
-        const parts = selectedDate.split('-');
-        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        const d = parseLocalDate(selectedDate);
         const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const dayName = days[d.getDay()];
 
-        const now = new Date();
-        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const todayStr = getLocalDateString();
         const isToday = selectedDate === todayStr;
         const isPast = selectedDate < todayStr;
         const formatted = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
@@ -1625,17 +1700,13 @@
 
       // Quick Date Stepping
       const handleStepDay = (step) => {
-        const parts = selectedDate.split('-');
-        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        const d = parseLocalDate(selectedDate);
         d.setDate(d.getDate() + step);
-        const newStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        onDateChange(newStr);
+        onDateChange(getLocalDateString(d));
       };
 
       const handleGoToday = () => {
-        const now = new Date();
-        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        onDateChange(todayStr);
+        onDateChange(getLocalDateString());
       };
 
       // Filter: Show students scheduled on selected day
@@ -2095,7 +2166,7 @@
                           <i className="fas fa-birthday-cake"></i> DOB: <strong>{student.dob || 'N/A'}</strong> {student.age ? `(Age: ${student.age} yrs)` : ''}
                         </div>
                       )}
-                      <div><strong>Package:</strong> {student.packageType || '4 Classes (₹6,000)'}</div>
+                      <div><strong>Package:</strong> {formatPackageDisplay(student.packageType, student.packageLimit, student.packageAmount)}</div>
                       <div><strong>Completed Classes:</strong> <span style={{ color: '#34D399', fontWeight: 800 }}>{student.completedClassesCount || 0}</span></div>
                       <div><strong>Last Class:</strong> {student.lastClassDate || 'N/A'}</div>
                       <div><strong>Last Payment:</strong> {student.lastPaymentDate || 'N/A'}</div>
@@ -2124,8 +2195,28 @@
       );
     }
 
-    // Student Modal (Add/Edit) with Weekly Day, Timings, and Next Class Date
+    // Student Modal (Add/Edit) with Weekly Day, Timings, Next Class Date, and Full Custom Package (Classes & Rupees)
     function StudentModal({ student, teacher, onClose, onSave }) {
+      const determineInitialPlan = () => {
+        if (!student) return { plan: '4', classes: 4, amount: 6000 };
+        const pType = student.packageType || '';
+        const pLimit = Number(student.packageLimit) || (pType.includes('12') ? 12 : 4);
+        const pAmount = Number(student.packageAmount) || (pLimit === 12 ? 15000 : 6000);
+
+        if (pLimit === 4 && pAmount === 6000 && !pType.toLowerCase().includes('custom')) {
+          return { plan: '4', classes: 4, amount: 6000 };
+        }
+        if (pLimit === 12 && pAmount === 15000 && !pType.toLowerCase().includes('custom')) {
+          return { plan: '12', classes: 12, amount: 15000 };
+        }
+        return { plan: 'custom', classes: pLimit, amount: pAmount };
+      };
+
+      const initialPlanInfo = determineInitialPlan();
+      const [selectedPlan, setSelectedPlan] = useState(initialPlanInfo.plan);
+      const [customClasses, setCustomClasses] = useState(initialPlanInfo.classes);
+      const [customAmount, setCustomAmount] = useState(initialPlanInfo.amount);
+
       const [formData, setFormData] = useState({
         name: student?.name || '',
         teacherId: student?.teacherId || teacher?.id || 'gaurav',
@@ -2133,11 +2224,13 @@
         email: student?.email || '',
         dob: student?.dob || '',
         age: student?.age !== undefined && student?.age !== null ? String(student.age) : '',
-        joiningDate: student?.joiningDate || new Date().toISOString().split('T')[0],
+        joiningDate: student?.joiningDate || getLocalDateString(),
         musicClass: student?.musicClass || 'Music Production',
-        packageType: student?.packageType || '4 Classes Package (₹6,000)',
-        packageAmount: student?.packageAmount || 6000,
-        packageLimit: student?.packageLimit || 4,
+        packageType: initialPlanInfo.plan === 'custom'
+          ? `Custom Package (${initialPlanInfo.classes} Classes - ₹${Number(initialPlanInfo.amount).toLocaleString('en-IN')})`
+          : (initialPlanInfo.plan === '12' ? '12 Classes Package (₹15,000)' : '4 Classes Package (₹6,000)'),
+        packageAmount: initialPlanInfo.amount,
+        packageLimit: initialPlanInfo.classes,
         weeklyDay: student?.weeklyDay || 'Thursday',
         classTimings: student?.classTimings || '04:00 PM IST',
         nextClassDate: student?.nextClassDate || calculateNextClassDate(student?.weeklyDay || 'Thursday'),
@@ -2175,21 +2268,84 @@
         setFormData(prev => ({ ...prev, dob: dobVal, age: calculatedAge }));
       };
 
-      const handlePackageChange = (val) => {
-        let amt = 6000;
-        let limit = 4;
-        if (val.includes('12')) { amt = 15000; limit = 12; }
-        setFormData(prev => ({ ...prev, packageType: val, packageAmount: amt, packageLimit: limit }));
+      const handlePlanChange = (plan) => {
+        setSelectedPlan(plan);
+        if (plan === '4') {
+          setFormData(prev => ({
+            ...prev,
+            packageType: '4 Classes Package (₹6,000)',
+            packageLimit: 4,
+            packageAmount: 6000
+          }));
+        } else if (plan === '12') {
+          setFormData(prev => ({
+            ...prev,
+            packageType: '12 Classes Package (₹15,000)',
+            packageLimit: 12,
+            packageAmount: 15000
+          }));
+        } else {
+          const cLimit = Number(customClasses) || 8;
+          const cAmt = Number(customAmount) || 10000;
+          setFormData(prev => ({
+            ...prev,
+            packageType: `Custom Package (${cLimit} Classes - ₹${cAmt.toLocaleString('en-IN')})`,
+            packageLimit: cLimit,
+            packageAmount: cAmt
+          }));
+        }
+      };
+
+      const handleCustomClassesChange = (val) => {
+        const num = val === '' ? '' : Number(val);
+        setCustomClasses(num);
+        if (num > 0) {
+          setFormData(prev => ({
+            ...prev,
+            packageLimit: num,
+            packageType: `Custom Package (${num} Classes - ₹${Number(customAmount || 0).toLocaleString('en-IN')})`
+          }));
+        }
+      };
+
+      const handleCustomAmountChange = (val) => {
+        const num = val === '' ? '' : Number(val);
+        setCustomAmount(num);
+        if (num >= 0) {
+          setFormData(prev => ({
+            ...prev,
+            packageAmount: num,
+            packageType: `Custom Package (${Number(customClasses || 0)} Classes - ₹${Number(num).toLocaleString('en-IN')})`
+          }));
+        }
       };
 
       return (
         <div className="modal-backdrop" onClick={onClose}>
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
+          <div className="modal-card" style={{ maxWidth: '640px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>{student ? `Edit ${student.name}` : 'Add New Student'}</h3>
               <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
             </div>
-            <form onSubmit={e => { e.preventDefault(); onSave({ ...formData, teacherName: teacher?.name || 'Gaurav', classDays: `Every ${formData.weeklyDay}` }); }}>
+            <form onSubmit={e => {
+              e.preventDefault();
+              let finalType = formData.packageType;
+              let finalLimit = Number(formData.packageLimit) || 4;
+              let finalAmount = Number(formData.packageAmount) || 6000;
+              if (selectedPlan === 'custom') {
+                finalLimit = Number(customClasses) || 1;
+                finalAmount = Number(customAmount) || 0;
+                finalType = `Custom Package (${finalLimit} Classes - ₹${finalAmount.toLocaleString('en-IN')})`;
+              }
+              onSave({
+                ...formData,
+                packageType: finalType,
+                packageLimit: finalLimit,
+                packageAmount: finalAmount,
+                teacherName: teacher?.name || 'Gaurav',
+                classDays: `Every ${formData.weeklyDay}`
+              });
+            }}>
               <div className="modal-body form-grid">
                 <div className="form-group">
                   <label className="form-label">Student Name *</label>
@@ -2285,14 +2441,93 @@
                   />
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Tuition Package</label>
-                  <select value={formData.packageType} onChange={e => handlePackageChange(e.target.value)}>
-                    <option value="4 Classes Package (₹6,000)">4 Classes Package (₹6,000)</option>
-                    <option value="12 Classes Package (₹15,000)">12 Classes Package (₹15,000)</option>
-                    <option value="Custom Classes Package">Custom Package</option>
+                {/* TUITION PACKAGE SELECTOR */}
+                <div className="form-group" style={{ gridColumn: selectedPlan === 'custom' ? '1 / -1' : 'auto' }}>
+                  <label className="form-label" style={{ color: '#818CF8', fontWeight: 700 }}>
+                    <i className="fas fa-cubes"></i> Tuition Package Plan *
+                  </label>
+                  <select value={selectedPlan} onChange={e => handlePlanChange(e.target.value)}>
+                    <option value="4">Standard 4 Classes Package (₹6,000)</option>
+                    <option value="12">Standard 12 Classes Package (₹15,000)</option>
+                    <option value="custom">✨ Custom Package (Enter Classes & Rupees)</option>
                   </select>
                 </div>
+
+                {/* CUSTOM PACKAGE DETAILS: HOW MANY CLASSES & HOW MANY RUPEES */}
+                {selectedPlan === 'custom' && (
+                  <div style={{
+                    gridColumn: '1 / -1',
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.08))',
+                    border: '1.5px solid rgba(129, 140, 248, 0.4)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '1.25rem',
+                    marginBottom: '0.5rem',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#A5B4FC', fontWeight: 800, fontSize: '0.95rem' }}>
+                      <i className="fas fa-sliders-h" style={{ color: '#818CF8' }}></i>
+                      <span>Custom Package Details</span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ color: '#38BDF8', fontWeight: 700 }}>
+                          <i className="fas fa-layer-group"></i> How Many Classes? *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          max="200"
+                          placeholder="e.g. 6, 8, 10, 16, 20"
+                          value={customClasses}
+                          onChange={e => handleCustomClassesChange(e.target.value)}
+                          style={{ borderColor: 'rgba(56, 189, 248, 0.5)' }}
+                        />
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem', display: 'block' }}>
+                          Number of classes in this package
+                        </span>
+                      </div>
+
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ color: '#34D399', fontWeight: 700 }}>
+                          <i className="fas fa-rupee-sign"></i> How Many Rupees (₹)? *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min="0"
+                          step="50"
+                          placeholder="e.g. 8000, 10000, 14000"
+                          value={customAmount}
+                          onChange={e => handleCustomAmountChange(e.target.value)}
+                          style={{ borderColor: 'rgba(52, 211, 153, 0.5)' }}
+                        />
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem', display: 'block' }}>
+                          Total package price in rupees
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{
+                      marginTop: '1rem',
+                      padding: '0.75rem 1rem',
+                      background: 'rgba(15, 23, 42, 0.6)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '0.5rem'
+                    }}>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Package Summary:</span>
+                      <strong style={{ color: '#38BDF8', fontSize: '0.95rem', fontWeight: 800 }}>
+                        Custom Package ({customClasses || 0} Classes for ₹{Number(customAmount || 0).toLocaleString('en-IN')})
+                      </strong>
+                    </div>
+                  </div>
+                )}
 
                 <div className="form-group">
                   <label className="form-label">Fee Status</label>
@@ -2355,7 +2590,7 @@
                   <div><strong>Age:</strong> {student.age ? `${student.age} years old` : 'Not specified'}</div>
                   <div><strong>Phone:</strong> {student.phone || 'N/A'}</div>
                   <div><strong>Email:</strong> {student.email || 'N/A'}</div>
-                  <div><strong>Package:</strong> {student.packageType}</div>
+                  <div><strong>Package:</strong> {formatPackageDisplay(student.packageType, student.packageLimit, student.packageAmount)}</div>
                   <div><strong>Total Completed:</strong> <span style={{ color: '#34D399', fontWeight: 800 }}>{student.completedClassesCount || 0} classes</span></div>
                   <div><strong>Last Class:</strong> {student.lastClassDate || 'N/A'}</div>
                   <div><strong>Last Payment:</strong> {student.lastPaymentDate || 'N/A'}</div>
@@ -2761,7 +2996,7 @@
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                  <h4 style={{ fontWeight: 800, fontSize: '1.1rem' }}>Cycle #{cycle.cycleId}: {cycle.packageType || `${limit} Classes`}</h4>
+                  <h4 style={{ fontWeight: 800, fontSize: '1.1rem' }}>Cycle #{cycle.cycleId}: {formatPackageDisplay(cycle.packageType, cycle.limit, cycle.packageAmount)}</h4>
                   {isPending ? <span className="badge badge-pending">PENDING PAYMENT</span> : <span className="badge badge-paid">PAID</span>}
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -2865,7 +3100,7 @@
                       <tr key={p.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <td style={{ padding: '0.85rem 1.25rem', fontWeight: 800, color: '#A5B4FC' }}>{p.paymentDate}</td>
                         <td style={{ padding: '0.85rem 1.25rem', fontWeight: 800, color: '#34D399' }}>₹{Number(p.amount || 0).toLocaleString('en-IN')}</td>
-                        <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-muted)' }}>{p.packageType}</td>
+                        <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-muted)' }}>{formatPackageDisplay(p.packageType, p.limit, p.amount)}</td>
                         <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-muted)' }}>{p.paymentMethod || 'UPI'}</td>
                         <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>{p.remarks}</td>
                         <td style={{ padding: '0.85rem 1.25rem', textAlign: 'right' }}>
@@ -2940,9 +3175,9 @@
     // Modal: Reschedule
     function RescheduleModal({ students, onClose, onSave }) {
       const [studentId, setStudentId] = useState(students[0]?.id || '');
-      const [originalDate, setOriginalDate] = useState(new Date().toISOString().split('T')[0]);
+      const [originalDate, setOriginalDate] = useState(getLocalDateString());
       const [originalTime, setOriginalTime] = useState('04:00 PM IST');
-      const [rescheduledDate, setRescheduledDate] = useState(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
+      const [rescheduledDate, setRescheduledDate] = useState(getLocalDateString(new Date(Date.now() + 86400000)));
       const [rescheduledTime, setRescheduledTime] = useState('02:00 PM IST');
       const [reason, setReason] = useState('Student requested reschedule');
 
@@ -2995,7 +3230,7 @@
     // Modal: Extra Class
     function ExtraClassModal({ students, onClose, onSave }) {
       const [studentId, setStudentId] = useState(students[0]?.id || '');
-      const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+      const [date, setDate] = useState(getLocalDateString());
       const [time, setTime] = useState('06:00 PM IST');
       const [remarks, setRemarks] = useState('Extra class session (counted)');
 
@@ -3039,7 +3274,7 @@
 
     // Modal: Mark Paid
     function MarkPaidModal({ target, onClose, onConfirm }) {
-      const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+      const [paymentDate, setPaymentDate] = useState(getLocalDateString());
       const [amount, setAmount] = useState(target.cycle.packageAmount || 6000);
       const [method, setMethod] = useState('UPI / GPay');
       const [remarks, setRemarks] = useState(`Payment cleared for Cycle #${target.cycle.cycleId}`);
@@ -3055,7 +3290,7 @@
               <div className="modal-body form-grid">
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <div style={{ background: 'var(--bg-subtle)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
-                    Student: <strong>{target.student.name}</strong> • Package: <strong>{target.cycle.packageType}</strong>
+                    Student: <strong>{target.student.name}</strong> • Package: <strong>{formatPackageDisplay(target.cycle.packageType, target.cycle.limit, target.cycle.packageAmount)}</strong>
                   </div>
                 </div>
                 <div className="form-group">
@@ -3090,7 +3325,7 @@
     function PaymentModal({ students, targetStudent, editingPayment, onClose, onSave }) {
       const [studentId, setStudentId] = useState(editingPayment?.studentId || targetStudent?.id || students[0]?.id || '');
       const [amount, setAmount] = useState(editingPayment?.amount || 6000);
-      const [paymentDate, setPaymentDate] = useState(editingPayment?.paymentDate || new Date().toISOString().split('T')[0]);
+      const [paymentDate, setPaymentDate] = useState(editingPayment?.paymentDate || getLocalDateString());
       const [packageType, setPackageType] = useState(editingPayment?.packageType || '4 Classes Package (₹6,000)');
       const [paymentMethod, setPaymentMethod] = useState(editingPayment?.paymentMethod || 'UPI / GPay');
       const [remarks, setRemarks] = useState(editingPayment?.remarks || 'Tuition fee');
@@ -3146,47 +3381,166 @@
       );
     }
 
-    // Modal: Add Cycle
+    // Modal: Add Cycle with Custom Package support (how many classes & how many rupees)
     function AddCycleModal({ student, onClose, onSave }) {
-      const [packageType, setPackageType] = useState('4 Classes Package (₹6,000)');
-      const [limit, setLimit] = useState(4);
-      const [packageAmount, setPackageAmount] = useState(6000);
-      const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+      const determineInitialCyclePlan = () => {
+        const pType = student?.packageType || '';
+        const pLimit = Number(student?.packageLimit) || (pType.includes('12') ? 12 : 4);
+        const pAmt = Number(student?.packageAmount) || (pLimit === 12 ? 15000 : 6000);
+
+        if (pLimit === 4 && pAmt === 6000 && !pType.toLowerCase().includes('custom')) {
+          return { plan: '4', limit: 4, amount: 6000 };
+        }
+        if (pLimit === 12 && pAmt === 15000 && !pType.toLowerCase().includes('custom')) {
+          return { plan: '12', limit: 12, amount: 15000 };
+        }
+        return { plan: 'custom', limit: pLimit, amount: pAmt };
+      };
+
+      const init = determineInitialCyclePlan();
+      const [planChoice, setPlanChoice] = useState(init.plan);
+      const [limit, setLimit] = useState(init.limit);
+      const [packageAmount, setPackageAmount] = useState(init.amount);
+      const [startDate, setStartDate] = useState(getLocalDateString());
       const [feeStatus, setFeeStatus] = useState('paid');
       const [remarks, setRemarks] = useState('');
 
+      const handlePlanSelect = (val) => {
+        setPlanChoice(val);
+        if (val === '4') {
+          setLimit(4);
+          setPackageAmount(6000);
+        } else if (val === '12') {
+          setLimit(12);
+          setPackageAmount(15000);
+        } else {
+          if (!limit || limit === 4 || limit === 12) setLimit(8);
+          if (!packageAmount || packageAmount === 6000 || packageAmount === 15000) setPackageAmount(10000);
+        }
+      };
+
       return (
         <div className="modal-backdrop" onClick={onClose}>
-          <div className="modal-card" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal-card" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Add Package Cycle for {student.name}</h3>
               <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
             </div>
-            <form onSubmit={e => { e.preventDefault(); onSave({ studentId: student.id, packageType, limit: Number(limit), packageAmount: Number(packageAmount), startDate, feeStatus, remarks }); }}>
+            <form onSubmit={e => {
+              e.preventDefault();
+              let computedType = '';
+              const finalLimit = Number(limit) || 4;
+              const finalAmount = Number(packageAmount) || 6000;
+              if (planChoice === '4') {
+                computedType = '4 Classes Package (₹6,000)';
+              } else if (planChoice === '12') {
+                computedType = '12 Classes Package (₹15,000)';
+              } else {
+                computedType = `Custom Package (${finalLimit} Classes - ₹${finalAmount.toLocaleString('en-IN')})`;
+              }
+              onSave({
+                studentId: student.id,
+                packageType: computedType,
+                limit: finalLimit,
+                packageAmount: finalAmount,
+                startDate,
+                feeStatus,
+                remarks
+              });
+            }}>
               <div className="modal-body form-grid">
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label className="form-label">Package Plan *</label>
-                  <select value={packageType} onChange={e => {
-                    const val = e.target.value;
-                    setPackageType(val);
-                    if (val.includes('12')) { setLimit(12); setPackageAmount(15000); }
-                    else if (val.includes('4')) { setLimit(4); setPackageAmount(6000); }
-                  }}>
-                    <option value="4 Classes Package (₹6,000)">4 Classes Package (₹6,000)</option>
-                    <option value="12 Classes Package (₹15,000)">12 Classes Package (₹15,000)</option>
-                    <option value="Custom Classes Package">Custom Package</option>
+                  <label className="form-label" style={{ color: '#818CF8', fontWeight: 700 }}>
+                    <i className="fas fa-cubes"></i> Package Plan *
+                  </label>
+                  <select value={planChoice} onChange={e => handlePlanSelect(e.target.value)}>
+                    <option value="4">Standard 4 Classes Package (₹6,000)</option>
+                    <option value="12">Standard 12 Classes Package (₹15,000)</option>
+                    <option value="custom">✨ Custom Package (Enter Classes & Rupees)</option>
                   </select>
                 </div>
+
+                {planChoice === 'custom' && (
+                  <div style={{
+                    gridColumn: '1 / -1',
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.08))',
+                    border: '1.5px solid rgba(129, 140, 248, 0.4)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '1.25rem',
+                    marginBottom: '0.5rem'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#A5B4FC', fontWeight: 800, fontSize: '0.95rem' }}>
+                      <i className="fas fa-sliders-h" style={{ color: '#818CF8' }}></i>
+                      <span>Custom Cycle Details</span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ color: '#38BDF8', fontWeight: 700 }}>
+                          <i className="fas fa-layer-group"></i> How Many Classes? *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          max="200"
+                          placeholder="e.g. 8"
+                          value={limit}
+                          onChange={e => setLimit(Number(e.target.value))}
+                          style={{ borderColor: 'rgba(56, 189, 248, 0.5)' }}
+                        />
+                      </div>
+
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ color: '#34D399', fontWeight: 700 }}>
+                          <i className="fas fa-rupee-sign"></i> How Many Rupees (₹)? *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min="0"
+                          step="50"
+                          placeholder="e.g. 10000"
+                          value={packageAmount}
+                          onChange={e => setPackageAmount(Number(e.target.value))}
+                          style={{ borderColor: 'rgba(52, 211, 153, 0.5)' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{
+                      marginTop: '1rem',
+                      padding: '0.6rem 0.85rem',
+                      background: 'rgba(15, 23, 42, 0.6)',
+                      borderRadius: '6px',
+                      fontSize: '0.85rem',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Package Summary:</span>
+                      <strong style={{ color: '#38BDF8' }}>
+                        Custom Package ({limit || 0} Classes for ₹{Number(packageAmount || 0).toLocaleString('en-IN')})
+                      </strong>
+                    </div>
+                  </div>
+                )}
+
+                {planChoice !== 'custom' && (
+                  <>
+                    <div className="form-group">
+                      <label className="form-label">Class Limit</label>
+                      <input type="number" readOnly value={limit} style={{ opacity: 0.8 }} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Amount (₹)</label>
+                      <input type="number" readOnly value={packageAmount} style={{ opacity: 0.8 }} />
+                    </div>
+                  </>
+                )}
+
                 <div className="form-group">
-                  <label className="form-label">Class Limit *</label>
-                  <input type="number" required min={1} value={limit} onChange={e => setLimit(Number(e.target.value))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Amount (₹) *</label>
-                  <input type="number" required value={packageAmount} onChange={e => setPackageAmount(Number(e.target.value))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Start Date *</label>
+                  <label className="form-label">Cycle Start Date *</label>
                   <input type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} />
                 </div>
                 <div className="form-group">
@@ -3195,6 +3549,10 @@
                     <option value="paid">Paid</option>
                     <option value="pending">Pending</option>
                   </select>
+                </div>
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Remarks</label>
+                  <input type="text" placeholder="e.g. Extended cycle or custom curriculum" value={remarks} onChange={e => setRemarks(e.target.value)} />
                 </div>
               </div>
               <div className="modal-footer">
@@ -3209,7 +3567,7 @@
 
     // Modal: Add Date to Cycle
     function AddClassDateModal({ student, cycleId, onClose, onSave }) {
-      const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+      const [date, setDate] = useState(getLocalDateString());
       const [remarks, setRemarks] = useState('Completed 45-min music class');
 
       return (
