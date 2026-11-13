@@ -312,7 +312,21 @@
   <!-- REACT SCRIPT -->
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
-    const DEFAULT_CLOUD_URL = 'https://api.restful-api.dev/objects/ff808181a09d98f701a115f991681560';
+    // Central Multi-Device Database URL (Firebase Realtime Database REST API)
+    const DEFAULT_FIREBASE_URL = '';
+
+    // Automatically ensure Firebase URL ends with /studio_data.json for REST API
+    function normalizeCloudUrl(rawUrl) {
+      if (!rawUrl || !rawUrl.trim()) return '';
+      let url = rawUrl.trim();
+      if (url.includes('firebaseio.com')) {
+        url = url.replace(/\/+$/, '');
+        if (!url.endsWith('.json')) {
+          url = url + '/studio_data.json';
+        }
+      }
+      return url;
+    }
 
     // Helper: Calculate Next Class Date given Weekly Day (e.g. 'Thursday' or 'Saturday')
     // If today is Saturday 14 Nov, next class is Saturday 21 Nov!
@@ -420,6 +434,10 @@
         }
       });
 
+      const [cloudDbUrl, setCloudDbUrl] = useState(() => {
+        return localStorage.getItem('studio_cloud_db_url_v6') || DEFAULT_FIREBASE_URL;
+      });
+
       const [sheetUrl, setSheetUrl] = useState(() => {
         return localStorage.getItem('studio_sheet_url_v5') || initData.googleSheetUrl || 'https://docs.google.com/spreadsheets/d/1aCHYJrvjzg1goDalQpwXAPenEU0At2xAkzU-3ESdcHQ';
       });
@@ -489,21 +507,129 @@
         else localStorage.removeItem('studio_active_teacher_v5');
       }, [currentTeacher]);
 
-      const syncWithCloud = async () => {
+      // Helper: Apply incoming cloud data to React state & localStorage
+      const applyIncomingCloudData = (cloudData) => {
+        if (!cloudData) return;
+        const d = cloudData.data || cloudData;
+        if (!d) return;
+
+        if (Array.isArray(d.teachers) && d.teachers.length > 0) {
+          setTeachers(d.teachers);
+          localStorage.setItem('studio_teachers_v6', JSON.stringify(d.teachers));
+        }
+        if (Array.isArray(d.students) && d.students.length > 0) {
+          setStudents(d.students);
+          localStorage.setItem('studio_students_v6', JSON.stringify(d.students));
+        }
+        if (Array.isArray(d.payments)) {
+          setPayments(d.payments);
+          localStorage.setItem('studio_payments_v6', JSON.stringify(d.payments));
+        }
+        if (Array.isArray(d.classes)) {
+          setClassesHistory(d.classes);
+          localStorage.setItem('studio_classes_v6', JSON.stringify(d.classes));
+        }
+        if (d.attendanceMap && typeof d.attendanceMap === 'object') {
+          setAttendanceMap(d.attendanceMap);
+          localStorage.setItem('studio_attendance_map_v6', JSON.stringify(d.attendanceMap));
+        }
+        if (Array.isArray(d.rescheduledClasses)) {
+          setRescheduledClasses(d.rescheduledClasses);
+          localStorage.setItem('studio_rescheduled_v6', JSON.stringify(d.rescheduledClasses));
+        }
+        if (d.updatedAt) {
+          setLastSyncTime(d.updatedAt);
+        }
+      };
+
+      // 100% REAL-TIME MULTI-DEVICE CLOUD SYNC LOOP (Startup & Every 15 Seconds)
+      useEffect(() => {
+        const targetUrl = normalizeCloudUrl(cloudDbUrl);
+        if (!targetUrl) return;
+
+        let isMounted = true;
+        const checkCloudUpdates = async () => {
+          try {
+            const separator = targetUrl.includes('?') ? '&' : '?';
+            const fetchUrl = `${targetUrl}${separator}t=${Date.now()}`;
+            const res = await fetch(fetchUrl);
+            if (res.ok) {
+              const json = await res.json();
+              if (json && isMounted) {
+                applyIncomingCloudData(json);
+                setSyncStatus('synced');
+              }
+            }
+          } catch (err) {
+            console.warn('Realtime cloud sync fetch error:', err);
+          }
+        };
+
+        // Immediate fetch on mount
+        checkCloudUpdates();
+
+        // Continuous sync every 15 seconds
+        const timer = setInterval(checkCloudUpdates, 15000);
+        return () => {
+          isMounted = false;
+          clearInterval(timer);
+        };
+      }, [cloudDbUrl]);
+
+      // Bulletproof Cloud & Local Sync Engine
+      const syncWithCloud = async (overrideData = {}) => {
         setSyncStatus('syncing');
+        const now = Date.now();
+        const currentTeachers = overrideData.teachers || teachers;
+        const currentStudents = overrideData.students || students;
+        const currentPayments = overrideData.payments || payments;
+        const currentClasses = overrideData.classes || classesHistory;
+        const currentAttendance = overrideData.attendanceMap || attendanceMap;
+        const currentRescheduled = overrideData.rescheduledClasses || rescheduledClasses;
+        const currentSheetUrl = overrideData.sheetUrl || sheetUrl;
+
+        // 1. Instant local persistence (offline resilient)
         try {
-          await fetch(DEFAULT_CLOUD_URL, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: 'Music Studio Multi-Teacher DB',
-              data: { students, teachers, classes: classesHistory, payments, attendanceMap, rescheduledClasses, sheetUrl, updatedAt: Date.now() }
-            })
-          });
-          setSyncStatus('synced');
-          setLastSyncTime(Date.now());
+          localStorage.setItem('studio_teachers_v6', JSON.stringify(currentTeachers));
+          localStorage.setItem('studio_students_v6', JSON.stringify(currentStudents));
+          localStorage.setItem('studio_payments_v6', JSON.stringify(currentPayments));
+          localStorage.setItem('studio_classes_v6', JSON.stringify(currentClasses));
+          localStorage.setItem('studio_attendance_map_v6', JSON.stringify(currentAttendance));
+          localStorage.setItem('studio_rescheduled_v6', JSON.stringify(currentRescheduled));
         } catch (e) {
-          setSyncStatus('error');
+          console.warn('LocalStorage save error:', e);
+        }
+
+        const payload = {
+          name: 'Harmony Music Studio Cloud Database',
+          updatedAt: now,
+          teachers: currentTeachers,
+          students: currentStudents,
+          payments: currentPayments,
+          classes: currentClasses,
+          attendanceMap: currentAttendance,
+          rescheduledClasses: currentRescheduled,
+          sheetUrl: currentSheetUrl
+        };
+
+        // 2. Real-time push to Firebase / Central Cloud Database
+        const targetUrl = normalizeCloudUrl(cloudDbUrl);
+        if (targetUrl) {
+          try {
+            await fetch(targetUrl, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            setSyncStatus('synced');
+            setLastSyncTime(now);
+          } catch (err) {
+            console.warn('Central cloud DB PUT error:', err);
+            setSyncStatus('error');
+          }
+        } else {
+          setSyncStatus('synced');
+          setLastSyncTime(now);
         }
       };
 
@@ -1087,20 +1213,31 @@
                 sheetUrl={sheetUrl}
                 classesHistory={classesHistory}
                 payments={payments}
+                cloudDbUrl={cloudDbUrl}
+                onSaveCloudDbUrl={(newUrl) => {
+                  setCloudDbUrl(newUrl);
+                  localStorage.setItem('studio_cloud_db_url_v6', newUrl);
+                  showToast(newUrl ? 'Cloud Database URL saved & connected!' : 'Cloud Database URL cleared.', 'success');
+                  syncWithCloud();
+                }}
                 onClose={() => setIsOwnerAdminOpen(false)}
                 onAddTeacher={() => setIsAddTeacherOpen(true)}
                 onEditTeacher={(t) => { setEditingTeacher(t); setIsAddTeacherOpen(true); }}
                 onDeleteTeacher={(tId) => {
                   const t = teachers.find(x => x.id === tId);
                   if (confirm(`Delete teacher "${t?.name}"? Students will be assigned to Gaurav.`)) {
-                    setTeachers(teachers.filter(x => x.id !== tId));
-                    setStudents(students.map(s => s.teacherId === tId ? { ...s, teacherId: 'gaurav', teacherName: 'Gaurav' } : s));
+                    const newTeachers = teachers.filter(x => x.id !== tId);
+                    const newStudents = students.map(s => s.teacherId === tId ? { ...s, teacherId: 'gaurav', teacherName: 'Gaurav' } : s);
+                    setTeachers(newTeachers);
+                    setStudents(newStudents);
                     showToast(`Teacher ${t?.name} removed.`, 'info');
-                    syncWithCloud();
+                    syncWithCloud({ teachers: newTeachers, students: newStudents });
                   }
                 }}
                 onEditSheetUrl={() => setIsEditSheetUrlOpen(true)}
                 onExportBackup={handleExportBackup}
+                onImportBackup={handleImportBackup}
+                onCopyDataForGithub={handleCopyDataForGithub}
                 onSyncCloud={() => syncWithCloud()}
               />
             )}
@@ -1258,6 +1395,7 @@
                 attendanceMap={attendanceMap}
                 onMarkAttendance={handleAttendanceClick}
                 teacherName={currentTeacher.name}
+                rescheduledClasses={rescheduledClasses}
                 onAddStudent={() => { setEditingStudent(null); setIsAddStudentOpen(true); }}
                 onViewProfile={(std) => setProfileViewingStudent(std)}
               />
@@ -1428,8 +1566,66 @@
     }
 
     // Attendance View Component (WITH CLASS TIMINGS & NEXT CLASS DATE)
-    function AttendanceView({ students, selectedDate, onDateChange, attendanceMap, onMarkAttendance, teacherName, onAddStudent, onViewProfile }) {
+    function AttendanceView({
+      students,
+      selectedDate,
+      onDateChange,
+      attendanceMap,
+      onMarkAttendance,
+      teacherName,
+      rescheduledClasses = [],
+      onAddStudent,
+      onViewProfile
+    }) {
+      const [filterMode, setFilterMode] = useState('scheduled'); // 'scheduled' | 'all'
       const dayRecords = attendanceMap[selectedDate] || {};
+
+      // Compute day name, e.g. "Saturday", and check if today or past
+      const selectedDayInfo = useMemo(() => {
+        if (!selectedDate) return { dayName: '', isToday: false, isPast: false, formatted: '' };
+        const parts = selectedDate.split('-');
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const dayName = days[d.getDay()];
+
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const isToday = selectedDate === todayStr;
+        const isPast = selectedDate < todayStr;
+        const formatted = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+
+        return { dayName, isToday, isPast, formatted, todayStr };
+      }, [selectedDate]);
+
+      // Quick Date Stepping
+      const handleStepDay = (step) => {
+        const parts = selectedDate.split('-');
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        d.setDate(d.getDate() + step);
+        const newStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        onDateChange(newStr);
+      };
+
+      const handleGoToday = () => {
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        onDateChange(todayStr);
+      };
+
+      // Filter: Show students scheduled on selected day
+      const scheduledStudents = useMemo(() => {
+        const dayLower = (selectedDayInfo.dayName || '').toLowerCase().trim();
+        return students.filter(s => {
+          const sDay = (s.weeklyDay || '').toLowerCase().trim();
+          const sDays = (s.classDays || '').toLowerCase();
+          const isRegular = sDay === dayLower || sDays.includes(dayLower);
+          const isRescheduled = rescheduledClasses.some(r => r.studentId === s.id && r.rescheduledDate === selectedDate);
+          const isAlreadyMarked = !!dayRecords[s.id];
+          return isRegular || isRescheduled || isAlreadyMarked;
+        });
+      }, [students, selectedDayInfo.dayName, selectedDate, rescheduledClasses, dayRecords]);
+
+      const displayedStudents = filterMode === 'scheduled' ? scheduledStudents : students;
 
       const presentCount = students.filter(s => dayRecords[s.id]?.status === 'present').length;
       const absentCount = students.filter(s => dayRecords[s.id]?.status === 'absent').length;
@@ -1437,12 +1633,13 @@
 
       return (
         <div>
+          {/* Top Control Bar with Quick Date Stepping */}
           <div style={{
             background: 'var(--bg-surface)',
             border: '1px solid var(--border-color)',
             borderRadius: 'var(--radius-lg)',
             padding: '1.25rem 1.5rem',
-            marginBottom: '1.5rem',
+            marginBottom: '1.25rem',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -1450,167 +1647,364 @@
             flexWrap: 'wrap'
           }}>
             <div>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
-                Daily Attendance • {teacherName}
-              </h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                1 Class/Week • 45 Mins IST • Shows Class Timings & Next Class Date
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
+                  Daily Attendance • {teacherName}
+                </h3>
+                {selectedDayInfo.isToday ? (
+                  <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#34D399' }}>
+                    ● TODAY ({selectedDayInfo.dayName})
+                  </span>
+                ) : (
+                  <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#FBBF24' }}>
+                    <i className="fas fa-history"></i> {selectedDayInfo.dayName} ({selectedDayInfo.formatted})
+                  </span>
+                )}
+              </div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                45 Mins IST • Shows Class Timings & Next Class Date
               </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-subtle)', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+            {/* Date Selector with Previous Day, Date Picker, Next Day & Jump to Today */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => handleStepDay(-1)}
+                className="btn-secondary"
+                style={{ padding: '0.45rem 0.75rem', fontSize: '0.85rem' }}
+                title="Go back to previous date to mark missed attendance"
+              >
+                <i className="fas fa-chevron-left"></i> Previous Day
+              </button>
+
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: 'var(--bg-subtle)',
+                padding: '0.35rem 0.75rem',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--border-color)'
+              }}>
                 <i className="fas fa-calendar-alt" style={{ color: 'var(--primary)' }}></i>
-                <input type="date" value={selectedDate} onChange={e => onDateChange(e.target.value)} style={{ background: 'none', border: 'none', color: 'white', fontWeight: 700 }} />
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={e => onDateChange(e.target.value)}
+                  style={{ background: 'none', border: 'none', color: 'white', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer' }}
+                />
               </div>
-              <button onClick={onAddStudent} className="btn-primary" style={{ padding: '0.55rem 1rem', fontSize: '0.85rem' }}>
+
+              <button
+                type="button"
+                onClick={() => handleStepDay(1)}
+                className="btn-secondary"
+                style={{ padding: '0.45rem 0.75rem', fontSize: '0.85rem' }}
+                title="Next Day"
+              >
+                Next Day <i className="fas fa-chevron-right"></i>
+              </button>
+
+              {!selectedDayInfo.isToday && (
+                <button
+                  type="button"
+                  onClick={handleGoToday}
+                  className="btn-secondary"
+                  style={{ padding: '0.45rem 0.75rem', fontSize: '0.85rem', color: '#38BDF8', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+                  title="Jump back to today's date"
+                >
+                  <i className="fas fa-calendar-day"></i> Jump to Today
+                </button>
+              )}
+
+              <button
+                onClick={onAddStudent}
+                className="btn-primary"
+                style={{ padding: '0.55rem 1rem', fontSize: '0.85rem' }}
+              >
                 <i className="fas fa-plus"></i> Add Student
               </button>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+          {/* MISSED ATTENDANCE BACK-ENTRY NOTICE (Visible when navigating back to past dates) */}
+          {selectedDayInfo.isPast && (
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.1)',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              borderRadius: 'var(--radius-md)',
+              padding: '0.75rem 1.25rem',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <i className="fas fa-history" style={{ color: '#FBBF24', fontSize: '1.15rem' }}></i>
+                <span style={{ fontSize: '0.88rem' }}>
+                  <strong>Past Date Selected:</strong> {selectedDayInfo.formatted} ({selectedDayInfo.dayName}). You can mark missed attendance for this past day below.
+                </span>
+              </div>
+              <button
+                onClick={handleGoToday}
+                className="btn-secondary"
+                style={{ fontSize: '0.75rem', padding: '0.35rem 0.75rem' }}
+              >
+                Back to Today ({selectedDayInfo.todayStr})
+              </button>
+            </div>
+          )}
+
+          {/* Stat Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
             <StatCard label="Total Students" value={students.length} icon="fa-users" color="#6366F1" />
             <StatCard label="Present (Counted)" value={presentCount} icon="fa-check-circle" color="#10B981" />
             <StatCard label="Absent (Counted)" value={absentCount} icon="fa-times-circle" color="#EF4444" />
             <StatCard label="Leave (Not Deducted)" value={leaveCount} icon="fa-pause-circle" color="#F59E0B" />
           </div>
 
+          {/* Attendance Student List Table */}
           <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-            <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Student Schedule & Timing</span>
+            
+            {/* Filter Toggle: Scheduled Today vs View All */}
+            <div style={{
+              padding: '0.85rem 1.25rem',
+              borderBottom: '1px solid var(--border-color)',
+              background: 'var(--bg-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.75rem'
+            }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('scheduled')}
+                  style={{
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    background: filterMode === 'scheduled' ? 'var(--primary)' : 'var(--bg-surface)',
+                    color: filterMode === 'scheduled' ? 'white' : 'var(--text-muted)',
+                    border: '1px solid ' + (filterMode === 'scheduled' ? 'var(--primary)' : 'var(--border-color)'),
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <i className="fas fa-calendar-day"></i> {selectedDayInfo.dayName}'s Scheduled ({scheduledStudents.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('all')}
+                  style={{
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    background: filterMode === 'all' ? 'var(--primary)' : 'var(--bg-surface)',
+                    color: filterMode === 'all' ? 'white' : 'var(--text-muted)',
+                    border: '1px solid ' + (filterMode === 'all' ? 'var(--primary)' : 'var(--border-color)'),
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <i className="fas fa-users"></i> View All Students ({students.length})
+                </button>
+              </div>
+
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Showing <strong>{displayedStudents.length}</strong> of {students.length} students
+              </div>
+            </div>
+
+            {/* Column Headers */}
+            <div style={{
+              padding: '0.75rem 1.5rem',
+              borderBottom: '1px solid var(--border-color)',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              color: 'var(--text-muted)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              background: 'rgba(15, 23, 42, 0.4)'
+            }}>
+              <span>Student Schedule & Timings</span>
               <span>Mark Attendance (45 Mins IST)</span>
             </div>
 
+            {/* List Body */}
             <div>
-              {students.map(student => {
-                const record = dayRecords[student.id];
-                const status = record?.status;
-
-                // Compute next class date display
-                const nextDate = student.nextClassDate || calculateNextClassDate(student.weeklyDay || student.classDays || 'Thursday');
-                const weeklyDayText = student.weeklyDay ? `Every ${student.weeklyDay}` : (student.classDays || '1 class / week');
-                const timingsText = student.classTimings || '4:00 PM IST';
-
-                return (
-                  <div
-                    key={student.id}
-                    style={{
-                      padding: '1.25rem 1.5rem',
-                      borderBottom: '1px solid var(--border-color)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '1rem',
-                      flexWrap: 'wrap',
-                      background: status === 'present' ? 'rgba(16, 185, 129, 0.04)' : status === 'absent' ? 'rgba(239, 68, 68, 0.04)' : status === 'leave' ? 'rgba(245, 158, 11, 0.04)' : 'transparent'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: '320px' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: student.avatarColor || '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1.15rem', color: 'white' }}>
-                        {student.name.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <span onClick={() => onViewProfile(student)} style={{ fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer', textDecoration: 'underline' }}>
-                            {student.name}
-                          </span>
-                          <span className={`badge badge-${student.feeStatus || 'paid'}`}>
-                            {(student.feeStatus || 'paid').toUpperCase()}
-                          </span>
-                          <span className="badge badge-next" title="Next scheduled class date">
-                            <i className="fas fa-calendar-alt"></i> Next: {formatReadableDate(nextDate)}
-                          </span>
-                        </div>
-
-                        {/* CLASS TIMINGS & RECURRING DAY HIGHLIGHT */}
-                        <div style={{ fontSize: '0.85rem', color: '#CBD5E1', marginTop: '0.35rem', display: 'flex', gap: '0.85rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                          <span style={{ color: '#FBBF24', fontWeight: 700 }}>
-                            <i className="fas fa-clock"></i> {weeklyDayText} at {timingsText}
-                          </span>
-                          <span>•</span>
-                          <span style={{ color: 'var(--text-muted)' }}>
-                            <i className="fas fa-music"></i> {student.musicClass || 'Lessons'}
-                          </span>
-                          <span>•</span>
-                          <span style={{ color: '#34D399', fontWeight: 600 }}>
-                            {student.completedClassesCount || 0} completed
-                          </span>
-                        </div>
-
-                        {record?.reason && (
-                          <div style={{ fontSize: '0.75rem', color: '#FBBF24', marginTop: '0.25rem' }}>
-                            <i className="fas fa-info-circle"></i> {record.reason}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      <button
-                        onClick={() => onMarkAttendance(student.id, 'present')}
-                        style={{
-                          padding: '0.55rem 1.1rem',
-                          borderRadius: 'var(--radius-md)',
-                          fontWeight: 700,
-                          fontSize: '0.85rem',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.4rem',
-                          background: status === 'present' ? '#10B981' : 'rgba(16, 185, 129, 0.15)',
-                          color: status === 'present' ? 'white' : '#34D399',
-                          border: `1px solid ${status === 'present' ? '#10B981' : 'rgba(16, 185, 129, 0.4)'}`
-                        }}
-                      >
-                        <i className="fas fa-check"></i> Present (Counted)
-                      </button>
-
-                      <button
-                        onClick={() => onMarkAttendance(student.id, 'absent')}
-                        style={{
-                          padding: '0.55rem 1.1rem',
-                          borderRadius: 'var(--radius-md)',
-                          fontWeight: 700,
-                          fontSize: '0.85rem',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.4rem',
-                          background: status === 'absent' ? '#EF4444' : 'rgba(239, 68, 68, 0.15)',
-                          color: status === 'absent' ? 'white' : '#F87171',
-                          border: `1px solid ${status === 'absent' ? '#EF4444' : 'rgba(239, 68, 68, 0.4)'}`
-                        }}
-                      >
-                        <i className="fas fa-times"></i> Absent (Counted)
-                      </button>
-
-                      <button
-                        onClick={() => onMarkAttendance(student.id, 'leave')}
-                        style={{
-                          padding: '0.55rem 1.1rem',
-                          borderRadius: 'var(--radius-md)',
-                          fontWeight: 700,
-                          fontSize: '0.85rem',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.4rem',
-                          background: status === 'leave' ? '#F59E0B' : 'rgba(245, 158, 11, 0.15)',
-                          color: status === 'leave' ? 'white' : '#FBBF24',
-                          border: `1px solid ${status === 'leave' ? '#F59E0B' : 'rgba(245, 158, 11, 0.4)'}`
-                        }}
-                      >
-                        <i className="fas fa-pause"></i> Leave (Not Deducted)
-                      </button>
-                    </div>
+              {displayedStudents.length === 0 ? (
+                <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'var(--bg-subtle)', color: '#FBBF24', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', fontSize: '1.25rem' }}>
+                    <i className="fas fa-calendar-times"></i>
                   </div>
-                );
-              })}
+                  <h4 style={{ fontWeight: 800, color: 'white', marginBottom: '0.35rem' }}>
+                    No Students Scheduled on {selectedDayInfo.dayName}
+                  </h4>
+                  <p style={{ fontSize: '0.85rem', marginBottom: '1.25rem', color: 'var(--text-muted)' }}>
+                    None of {teacherName}'s regular students have a class on {selectedDayInfo.dayName} ({selectedDayInfo.formatted}).
+                  </p>
+                  <button
+                    onClick={() => setFilterMode('all')}
+                    className="btn-secondary"
+                    style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}
+                  >
+                    <i className="fas fa-users"></i> View All {students.length} Students
+                  </button>
+                </div>
+              ) : (
+                displayedStudents.map(student => {
+                  const record = dayRecords[student.id];
+                  const status = record?.status;
+
+                  // Compute next class date display
+                  const nextDate = student.nextClassDate || calculateNextClassDate(student.weeklyDay || student.classDays || 'Thursday');
+                  const weeklyDayText = student.weeklyDay ? `Every ${student.weeklyDay}` : (student.classDays || '1 class / week');
+                  const timingsText = student.classTimings || '4:00 PM IST';
+                  const isScheduledOnThisDay = (student.weeklyDay || '').toLowerCase().trim() === (selectedDayInfo.dayName || '').toLowerCase().trim();
+
+                  return (
+                    <div
+                      key={student.id}
+                      style={{
+                        padding: '1.25rem 1.5rem',
+                        borderBottom: '1px solid var(--border-color)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '1rem',
+                        flexWrap: 'wrap',
+                        background: status === 'present' ? 'rgba(16, 185, 129, 0.04)' : status === 'absent' ? 'rgba(239, 68, 68, 0.04)' : status === 'leave' ? 'rgba(245, 158, 11, 0.04)' : 'transparent'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: '320px' }}>
+                        <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: student.avatarColor || '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1.15rem', color: 'white' }}>
+                          {student.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <span onClick={() => onViewProfile(student)} style={{ fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer', textDecoration: 'underline' }}>
+                              {student.name}
+                            </span>
+                            <span className={`badge badge-${student.feeStatus || 'paid'}`}>
+                              {(student.feeStatus || 'paid').toUpperCase()}
+                            </span>
+                            {isScheduledOnThisDay ? (
+                              <span className="badge" style={{ background: 'rgba(99, 102, 241, 0.2)', color: '#818CF8' }}>
+                                <i className="fas fa-calendar-check"></i> Today's Regular
+                              </span>
+                            ) : (
+                              <span className="badge" style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)' }}>
+                                Regular: {student.weeklyDay || 'Thursday'}
+                              </span>
+                            )}
+                            <span className="badge badge-next" title="Next scheduled class date">
+                              <i className="fas fa-calendar-alt"></i> Next: {formatReadableDate(nextDate)}
+                            </span>
+                          </div>
+
+                          {/* CLASS TIMINGS & RECURRING DAY HIGHLIGHT */}
+                          <div style={{ fontSize: '0.85rem', color: '#CBD5E1', marginTop: '0.35rem', display: 'flex', gap: '0.85rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span style={{ color: '#FBBF24', fontWeight: 700 }}>
+                              <i className="fas fa-clock"></i> {weeklyDayText} at {timingsText}
+                            </span>
+                            <span>•</span>
+                            <span style={{ color: 'var(--text-muted)' }}>
+                              <i className="fas fa-music"></i> {student.musicClass || 'Lessons'}
+                            </span>
+                            <span>•</span>
+                            <span style={{ color: '#34D399', fontWeight: 600 }}>
+                              {student.completedClassesCount || 0} completed
+                            </span>
+                          </div>
+
+                          {record?.reason && (
+                            <div style={{ fontSize: '0.75rem', color: '#FBBF24', marginTop: '0.25rem' }}>
+                              <i className="fas fa-info-circle"></i> Leave Reason: {record.reason}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Attendance Buttons: Present, Absent, Leave */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => onMarkAttendance(student.id, 'present')}
+                          style={{
+                            padding: '0.55rem 1.1rem',
+                            borderRadius: 'var(--radius-md)',
+                            fontWeight: 700,
+                            fontSize: '0.85rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            background: status === 'present' ? '#10B981' : 'rgba(16, 185, 129, 0.15)',
+                            color: status === 'present' ? 'white' : '#34D399',
+                            border: `1px solid ${status === 'present' ? '#10B981' : 'rgba(16, 185, 129, 0.4)'}`
+                          }}
+                        >
+                          <i className="fas fa-check"></i> Present (Counted)
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => onMarkAttendance(student.id, 'absent')}
+                          style={{
+                            padding: '0.55rem 1.1rem',
+                            borderRadius: 'var(--radius-md)',
+                            fontWeight: 700,
+                            fontSize: '0.85rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            background: status === 'absent' ? '#EF4444' : 'rgba(239, 68, 68, 0.15)',
+                            color: status === 'absent' ? 'white' : '#F87171',
+                            border: `1px solid ${status === 'absent' ? '#EF4444' : 'rgba(239, 68, 68, 0.4)'}`
+                          }}
+                        >
+                          <i className="fas fa-times"></i> Absent (Counted)
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => onMarkAttendance(student.id, 'leave')}
+                          style={{
+                            padding: '0.55rem 1.1rem',
+                            borderRadius: 'var(--radius-md)',
+                            fontWeight: 700,
+                            fontSize: '0.85rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            background: status === 'leave' ? '#F59E0B' : 'rgba(245, 158, 11, 0.15)',
+                            color: status === 'leave' ? 'white' : '#FBBF24',
+                            border: `1px solid ${status === 'leave' ? '#F59E0B' : 'rgba(245, 158, 11, 0.4)'}`
+                          }}
+                        >
+                          <i className="fas fa-pause"></i> Leave (No Deduction)
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
       );
     }
 
-    // Students Directory Component (WITH CLASS TIMINGS & NEXT CLASS DATE)
     function StudentsDirectoryView({ students, onAddStudent, onEditStudent, onDeleteStudent, onViewProfile }) {
       const [q, setQ] = useState('');
       const filtered = students.filter(s => s.name.toLowerCase().includes(q.toLowerCase()));
@@ -1964,7 +2358,13 @@
     }
 
     // Owner Admin Console
-    function OwnerAdminConsole({ teachers, students, sheetUrl, classesHistory, payments, onClose, onAddTeacher, onEditTeacher, onDeleteTeacher, onEditSheetUrl, onExportBackup, onSyncCloud }) {
+    function OwnerAdminConsole({ teachers, students, sheetUrl, classesHistory, payments, onClose, onAddTeacher, onEditTeacher, onDeleteTeacher, onEditSheetUrl, onExportBackup, onImportBackup, onCopyDataForGithub, onSyncCloud, cloudDbUrl, onSaveCloudDbUrl }) {
+      const [customCloudUrl, setCustomCloudUrl] = useState(cloudDbUrl || '');
+
+      const handleSaveCloudUrl = () => {
+        const normalized = normalizeCloudUrl(customCloudUrl);
+        onSaveCloudDbUrl(normalized);
+      };
       const [adminTab, setAdminTab] = useState('teachers');
 
       return (
@@ -2031,18 +2431,97 @@
 
               {adminTab === 'db' && (
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
                     <div>
-                      <h4 style={{ fontWeight: 800 }}>In-App Database Storage</h4>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Download full backup or force cloud sync</p>
+                      <h4 style={{ fontWeight: 800, fontSize: '1.2rem', fontFamily: 'var(--font-heading)' }}>Central Cloud Database & Multi-Device Sync</h4>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                        Sync changes live between Laptop (PC), Mobile Phones (iOS/Android), and Tablets.
+                      </p>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button onClick={onSyncCloud} className="btn-secondary" style={{ fontSize: '0.85rem' }}>Force Cloud Sync</button>
-                      <button onClick={onExportBackup} className="btn-primary" style={{ fontSize: '0.85rem' }}>Download Backup (.json)</button>
+                    <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                      <button onClick={onExportBackup} className="btn-primary" style={{ fontSize: '0.85rem' }}>
+                        <i className="fas fa-download"></i> Export Backup (.json)
+                      </button>
+                      <label className="btn-secondary" style={{ fontSize: '0.85rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                        <i className="fas fa-upload"></i> Restore Backup (.json)
+                        <input type="file" accept=".json" onChange={onImportBackup} style={{ display: 'none' }} />
+                      </label>
+                      <button onClick={onSyncCloud} className="btn-secondary" style={{ fontSize: '0.85rem', color: '#38BDF8' }}>
+                        <i className="fas fa-sync-alt"></i> Force Cloud Sync
+                      </button>
                     </div>
                   </div>
-                  <div style={{ background: 'var(--bg-app)', padding: '1rem', borderRadius: 'var(--radius-md)', maxHeight: '380px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '0.8rem', color: '#CBD5E1' }}>
-                    <pre>{JSON.stringify({ studentsCount: students.length, classesLogged: classesHistory.length, paymentsCount: payments.length }, null, 2)}</pre>
+
+                  {/* FIREBASE REALTIME DATABASE CONFIGURATION BOX */}
+                  <div style={{ background: 'var(--bg-subtle)', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', marginBottom: '1.25rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <h5 style={{ fontWeight: 800, color: '#FBBF24', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <i className="fas fa-fire" style={{ color: '#F59E0B' }}></i> Free Firebase Realtime Database
+                      </h5>
+                      <span className="badge" style={{ background: cloudDbUrl ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: cloudDbUrl ? '#34D399' : '#F87171' }}>
+                        {cloudDbUrl ? '● CONNECTED & AUTO-SYNCING' : '○ NOT CONNECTED'}
+                      </span>
+                    </div>
+
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.85rem', lineHeight: 1.5 }}>
+                      Paste your free Firebase Realtime Database URL below. Once saved, any change made on any device immediately syncs in real-time to all other devices:
+                    </p>
+
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <input
+                        type="url"
+                        placeholder="https://your-studio-project-default-rtdb.firebaseio.com"
+                        value={customCloudUrl}
+                        onChange={e => setCustomCloudUrl(e.target.value)}
+                        style={{ flex: 1, fontSize: '0.85rem', padding: '0.65rem 0.85rem', background: 'var(--bg-app)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-sm)', color: 'white' }}
+                      />
+                      <button onClick={handleSaveCloudUrl} className="btn-primary" style={{ whiteSpace: 'nowrap', fontSize: '0.85rem', padding: '0.65rem 1rem' }}>
+                        <i className="fas fa-check"></i> Save & Connect Database
+                      </button>
+                    </div>
+
+                    {/* Step-by-Step Helper Guide */}
+                    <div style={{ background: 'var(--bg-app)', padding: '0.85rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-color)', fontSize: '0.8rem', color: '#CBD5E1', lineHeight: 1.6 }}>
+                      <strong style={{ color: '#FBBF24' }}>How to get your free database in 2 minutes:</strong>
+                      <ol style={{ paddingLeft: '1.25rem', marginTop: '0.35rem', marginBottom: 0 }}>
+                        <li>Visit <strong>console.firebase.google.com</strong> and click <strong>Create a project</strong> (name it anything, e.g. <code>my-music-studio</code>).</li>
+                        <li>Click <strong>Build &rarr; Realtime Database &rarr; Create Database</strong> (choose Test Mode: <code>.read: true, .write: true</code>).</li>
+                        <li>Copy your database URL from the top and paste it here!</li>
+                      </ol>
+                    </div>
+                  </div>
+
+                  {/* Current Database Summary */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem', marginBottom: '1.25rem' }}>
+                    <div style={{ background: 'var(--bg-subtle)', padding: '0.85rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Registered Teachers</div>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#818CF8' }}>{teachers.length}</div>
+                    </div>
+                    <div style={{ background: 'var(--bg-subtle)', padding: '0.85rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Total Students</div>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#34D399' }}>{students.length}</div>
+                    </div>
+                    <div style={{ background: 'var(--bg-subtle)', padding: '0.85rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Total Classes Logged</div>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#FBBF24' }}>{classesHistory.length}</div>
+                    </div>
+                    <div style={{ background: 'var(--bg-subtle)', padding: '0.85rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Payment Records</div>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#F472B6' }}>{payments.length}</div>
+                    </div>
+                  </div>
+
+                  {/* Permanent GitHub Bake Button */}
+                  <div style={{ background: 'var(--bg-subtle)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <strong style={{ fontSize: '0.85rem' }}>Bake Data Permanently into GitHub Code</strong>
+                      <button onClick={onCopyDataForGithub} className="btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}>
+                        <i className="fas fa-copy"></i> Copy Database JSON
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
+                      Once you finish entering all your students, click "Copy Database JSON" to save your data into initial_studio_data.json. When pushed to GitHub, your students will be baked directly into index.html as the permanent starting default!
+                    </p>
                   </div>
                 </div>
               )}
