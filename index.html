@@ -315,25 +315,8 @@
     const DEFAULT_CLOUD_URL = 'https://api.restful-api.dev/objects/ff808181a09d98f701a115f991681560';
 
     // Helper: Calculate Next Class Date given Weekly Day (e.g. 'Thursday' or 'Saturday')
-    function calculateNextClassDate(weeklyDay, baseDateStr = null) {
-      if (!weeklyDay) return '';
-      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-      const cleanDay = weeklyDay.toLowerCase().replace('every ', '').trim();
-      const targetDay = days.indexOf(cleanDay);
-      if (targetDay === -1) return '';
-
-      const base = baseDateStr ? new Date(baseDateStr) : new Date();
-      const currentDay = base.getDay();
-      let diff = targetDay - currentDay;
-      if (diff <= 0) {
-        diff += 7; // Next occurrence next week
-      }
-      const nextDate = new Date(base);
-      nextDate.setDate(base.getDate() + diff);
-      return nextDate.toISOString().split('T')[0];
-    }
-
-    // Helper: Calculate target day in THIS current week (or coming up)
+    // If today is Saturday 14 Nov, next class is Saturday 21 Nov!
+    // Helper: Calculate target day in THIS current week
     function calculateThisWeekClassDate(weeklyDay) {
       if (!weeklyDay) return '';
       const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -352,6 +335,24 @@
       return nextDate.toISOString().split('T')[0];
     }
 
+    function calculateNextClassDate(weeklyDay, baseDateStr = null) {
+      if (!weeklyDay) return '';
+      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const cleanDay = weeklyDay.toLowerCase().replace('every ', '').trim();
+      const targetDay = days.indexOf(cleanDay);
+      if (targetDay === -1) return '';
+
+      const base = baseDateStr ? new Date(baseDateStr) : new Date();
+      const currentDay = base.getDay();
+      let diff = targetDay - currentDay;
+      if (diff <= 0) {
+        diff += 7; // Next occurrence next week
+      }
+      const nextDate = new Date(base);
+      nextDate.setDate(base.getDate() + diff);
+      return nextDate.toISOString().split('T')[0];
+    }
+
     function formatReadableDate(dateStr) {
       if (!dateStr) return 'Not scheduled';
       try {
@@ -367,7 +368,7 @@
       
       const [students, setStudents] = useState(() => {
         try {
-          const saved = localStorage.getItem('studio_students_v6');
+          const saved = localStorage.getItem('studio_students_v5');
           return saved ? JSON.parse(saved) : (initData.students || []);
         } catch (e) {
           return initData.students || [];
@@ -376,7 +377,7 @@
 
       const [teachers, setTeachers] = useState(() => {
         try {
-          const saved = localStorage.getItem('studio_teachers_v6');
+          const saved = localStorage.getItem('studio_teachers_v5');
           return saved ? JSON.parse(saved) : (initData.teachers || []);
         } catch (e) {
           return initData.teachers || [];
@@ -385,7 +386,7 @@
 
       const [classesHistory, setClassesHistory] = useState(() => {
         try {
-          const saved = localStorage.getItem('studio_classes_v6');
+          const saved = localStorage.getItem('studio_classes_v5');
           return saved ? JSON.parse(saved) : (initData.classes || []);
         } catch (e) {
           return initData.classes || [];
@@ -394,7 +395,7 @@
 
       const [payments, setPayments] = useState(() => {
         try {
-          const saved = localStorage.getItem('studio_payments_v6');
+          const saved = localStorage.getItem('studio_payments_v5');
           return saved ? JSON.parse(saved) : (initData.payments || []);
         } catch (e) {
           return initData.payments || [];
@@ -403,7 +404,7 @@
 
       const [attendanceMap, setAttendanceMap] = useState(() => {
         try {
-          const saved = localStorage.getItem('studio_attendance_map_v6');
+          const saved = localStorage.getItem('studio_attendance_map_v5');
           return saved ? JSON.parse(saved) : {};
         } catch (e) {
           return {};
@@ -412,7 +413,7 @@
 
       const [rescheduledClasses, setRescheduledClasses] = useState(() => {
         try {
-          const saved = localStorage.getItem('studio_rescheduled_v6');
+          const saved = localStorage.getItem('studio_rescheduled_v5');
           return saved ? JSON.parse(saved) : [];
         } catch (e) {
           return [];
@@ -420,12 +421,12 @@
       });
 
       const [sheetUrl, setSheetUrl] = useState(() => {
-        return localStorage.getItem('studio_sheet_url_v6') || initData.googleSheetUrl || 'https://docs.google.com/spreadsheets/d/1aCHYJrvjzg1goDalQpwXAPenEU0At2xAkzU-3ESdcHQ';
+        return localStorage.getItem('studio_sheet_url_v5') || initData.googleSheetUrl || 'https://docs.google.com/spreadsheets/d/1aCHYJrvjzg1goDalQpwXAPenEU0At2xAkzU-3ESdcHQ';
       });
 
       const [currentTeacher, setCurrentTeacher] = useState(() => {
         try {
-          const saved = localStorage.getItem('studio_active_teacher_v6');
+          const saved = localStorage.getItem('studio_active_teacher_v5');
           return saved ? JSON.parse(saved) : null;
         } catch (e) {
           return null;
@@ -444,9 +445,6 @@
       const [leaveModalData, setLeaveModalData] = useState(null);
       const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
       const [isExtraClassOpen, setIsExtraClassOpen] = useState(false);
-
-      // PERMANENT SCHEDULE CHANGE MODAL (Inside Students Directory / Edit)
-      const [scheduleChangeTarget, setScheduleChangeTarget] = useState(null);
 
       const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
       const [editingStudent, setEditingStudent] = useState(null);
@@ -479,16 +477,16 @@
       };
 
       // Persistence
-      useEffect(() => { localStorage.setItem('studio_students_v6', JSON.stringify(students)); }, [students]);
-      useEffect(() => { localStorage.setItem('studio_teachers_v6', JSON.stringify(teachers)); }, [teachers]);
-      useEffect(() => { localStorage.setItem('studio_classes_v6', JSON.stringify(classesHistory)); }, [classesHistory]);
-      useEffect(() => { localStorage.setItem('studio_payments_v6', JSON.stringify(payments)); }, [payments]);
-      useEffect(() => { localStorage.setItem('studio_attendance_map_v6', JSON.stringify(attendanceMap)); }, [attendanceMap]);
-      useEffect(() => { localStorage.setItem('studio_rescheduled_v6', JSON.stringify(rescheduledClasses)); }, [rescheduledClasses]);
-      useEffect(() => { localStorage.setItem('studio_sheet_url_v6', sheetUrl); }, [sheetUrl]);
+      useEffect(() => { localStorage.setItem('studio_students_v5', JSON.stringify(students)); }, [students]);
+      useEffect(() => { localStorage.setItem('studio_teachers_v5', JSON.stringify(teachers)); }, [teachers]);
+      useEffect(() => { localStorage.setItem('studio_classes_v5', JSON.stringify(classesHistory)); }, [classesHistory]);
+      useEffect(() => { localStorage.setItem('studio_payments_v5', JSON.stringify(payments)); }, [payments]);
+      useEffect(() => { localStorage.setItem('studio_attendance_map_v5', JSON.stringify(attendanceMap)); }, [attendanceMap]);
+      useEffect(() => { localStorage.setItem('studio_rescheduled_v5', JSON.stringify(rescheduledClasses)); }, [rescheduledClasses]);
+      useEffect(() => { localStorage.setItem('studio_sheet_url_v5', sheetUrl); }, [sheetUrl]);
       useEffect(() => {
-        if (currentTeacher) localStorage.setItem('studio_active_teacher_v6', JSON.stringify(currentTeacher));
-        else localStorage.removeItem('studio_active_teacher_v6');
+        if (currentTeacher) localStorage.setItem('studio_active_teacher_v5', JSON.stringify(currentTeacher));
+        else localStorage.removeItem('studio_active_teacher_v5');
       }, [currentTeacher]);
 
       const syncWithCloud = async () => {
@@ -576,26 +574,8 @@
           return;
         }
 
-        // ==========================================
-        // SMART SCHEDULE ADVANCEMENT:
-        // 1. One-time reschedule/extra classes NEVER change regular schedule.
-        //    Next regular class returns to student's standard recurring weeklyDay!
-        // 2. If student had a pending schedule change effective from next week,
-        //    apply the change now that this week's class is completed!
-        // ==========================================
-        let finalWeeklyDay = student.weeklyDay || 'Thursday';
-        let finalTimings = student.classTimings || '4:00 PM IST';
-        let pendingChange = student.pendingScheduleChange;
-
-        if (pendingChange && pendingChange.effectiveNextWeek) {
-          finalWeeklyDay = pendingChange.newWeeklyDay;
-          finalTimings = pendingChange.newTimings;
-          pendingChange = null; // Activated!
-          showToast(`New regular schedule for ${student.name} is now active: Every ${finalWeeklyDay} at ${finalTimings}!`, 'success');
-        }
-
-        // Next class automatically scheduled on the regular weekly day (+7 days)
-        const autoNextDate = calculateNextClassDate(finalWeeklyDay, selectedDate);
+        // Advance Next Class Date by +7 days when marked Present!
+        const autoNextDate = calculateNextClassDate(student.weeklyDay || student.classDays || 'Thursday', selectedDate);
 
         let updatedStudents = students.map(s => {
           if (s.id === studentId) {
@@ -648,10 +628,6 @@
 
             return {
               ...s,
-              weeklyDay: finalWeeklyDay,
-              classDays: `Every ${finalWeeklyDay}`,
-              classTimings: finalTimings,
-              pendingScheduleChange: pendingChange,
               completedClassesCount: newTotal,
               currentCycleCompleted: currentCycleCount,
               lastClassDate: selectedDate,
@@ -669,7 +645,7 @@
         syncWithCloud();
       };
 
-      // ONE-TIME RESCHEDULE (Affects this week only!)
+      // Reschedule
       const handleSaveReschedule = (rescheduleData) => {
         const student = students.find(s => s.id === rescheduleData.studentId);
         const newRecord = {
@@ -687,23 +663,24 @@
 
         setRescheduledClasses([newRecord, ...rescheduledClasses]);
 
-        // Sets the next class date for this one-time session without changing regular schedule
+        // Update student's nextClassDate to the rescheduled date!
         setStudents(students.map(s => {
           if (s.id === rescheduleData.studentId) {
             return {
               ...s,
-              nextClassDate: rescheduleData.rescheduledDate
+              nextClassDate: rescheduleData.rescheduledDate,
+              classTimings: rescheduleData.rescheduledTime
             };
           }
           return s;
         }));
 
         setIsRescheduleOpen(false);
-        showToast(`One-time reschedule for ${student?.name}: moved to ${rescheduleData.rescheduledDate} (${rescheduleData.rescheduledTime})! Regular schedule remains Every ${student?.weeklyDay}.`, 'info');
+        showToast(`Class for ${student?.name} rescheduled to ${rescheduleData.rescheduledDate} at ${rescheduleData.rescheduledTime}!`, 'success');
         syncWithCloud();
       };
 
-      // ONE-TIME EXTRA CLASS
+      // Extra Class
       const handleSaveExtraClass = (extraData) => {
         const student = students.find(s => s.id === extraData.studentId);
         const newClass = {
@@ -721,53 +698,7 @@
 
         setClassesHistory([newClass, ...classesHistory]);
         setIsExtraClassOpen(false);
-        showToast(`Extra class scheduled for ${student?.name} on ${extraData.date}! Regular schedule remains unchanged.`, 'success');
-        syncWithCloud();
-      };
-
-      // PERMANENT SCHEDULE CHANGE (INSIDE STUDENTS DIRECTORY ONLY - ASK THIS WEEK OR NEXT WEEK)
-      const handleConfirmPermanentScheduleChange = (data) => {
-        const { studentId, newWeeklyDay, newTimings, effectiveScope, reason } = data;
-        const student = students.find(s => s.id === studentId);
-        if (!student) return;
-
-        if (effectiveScope === 'this_week') {
-          // Applies immediately from this week
-          const thisWeekDate = calculateThisWeekClassDate(newWeeklyDay);
-          setStudents(students.map(s => {
-            if (s.id === studentId) {
-              return {
-                ...s,
-                weeklyDay: newWeeklyDay,
-                classDays: `Every ${newWeeklyDay}`,
-                classTimings: newTimings,
-                nextClassDate: thisWeekDate,
-                pendingScheduleChange: null
-              };
-            }
-            return s;
-          }));
-          showToast(`Regular schedule for ${student.name} changed to Every ${newWeeklyDay} at ${newTimings} (Effective THIS WEEK - Next: ${thisWeekDate})!`, 'success');
-        } else {
-          // Applies from NEXT WEEK: keeps this week on old schedule, queues change for next week
-          setStudents(students.map(s => {
-            if (s.id === studentId) {
-              return {
-                ...s,
-                pendingScheduleChange: {
-                  newWeeklyDay,
-                  newTimings,
-                  effectiveNextWeek: true,
-                  reason
-                }
-              };
-            }
-            return s;
-          }));
-          showToast(`Regular schedule change for ${student.name} recorded! Will take effect starting NEXT WEEK (Every ${newWeeklyDay} at ${newTimings}).`, 'info');
-        }
-
-        setScheduleChangeTarget(null);
+        showToast(`Extra class scheduled for ${student?.name} on ${extraData.date}!`, 'success');
         syncWithCloud();
       };
 
@@ -908,6 +839,7 @@
 
       // Save Student
       const handleSaveStudent = (data) => {
+        // Compute Next Class Date automatically if not provided
         const computedNext = data.nextClassDate || calculateNextClassDate(data.weeklyDay || 'Thursday');
 
         if (editingStudent) {
@@ -940,19 +872,71 @@
         syncWithCloud();
       };
 
-      // Export Backup
+      // Full Studio Database Export
       const handleExportBackup = () => {
-        const blob = new Blob([JSON.stringify({ students, teachers, classesHistory, payments, attendanceMap, rescheduledClasses, sheetUrl }, null, 2)], { type: 'application/json' });
+        const fullBackup = {
+          version: '6.0',
+          exportedAt: new Date().toISOString(),
+          teachers,
+          students,
+          payments,
+          classes: classesHistory,
+          attendanceMap,
+          rescheduledClasses,
+          sheetUrl
+        };
+        const blob = new Blob([JSON.stringify(fullBackup, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `music_studio_backup_${new Date().toISOString().split('T')[0]}.json`;
+        a.download = `music_studio_database_backup_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
         a.click();
+        a.remove();
         URL.revokeObjectURL(url);
-        showToast('Full backup downloaded!', 'success');
+        showToast('Complete Studio Database Backup downloaded!', 'success');
       };
 
-      // VIEW 1: HOME PAGE (Clean, Only Teachers List + Studio Admin in Corner)
+      // Full Studio Database Import
+      const handleImportBackup = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const imported = JSON.parse(e.target.result);
+            if (imported.students && imported.teachers) {
+              applyIncomingCloudData(imported);
+              syncWithCloud(imported);
+              showToast(`Backup restored! Loaded ${imported.students.length} students & ${imported.teachers.length} teachers.`, 'success');
+            } else {
+              showToast('Invalid backup file format.', 'error');
+            }
+          } catch (err) {
+            showToast('Failed to parse backup JSON file.', 'error');
+          }
+        };
+        reader.readAsText(file);
+        event.target.value = '';
+      };
+
+      // Copy Data for GitHub INITIAL_DATA
+      const handleCopyDataForGithub = () => {
+        const githubData = {
+          teachers,
+          students,
+          classes: classesHistory,
+          payments,
+          googleSheetUrl: sheetUrl
+        };
+        navigator.clipboard.writeText(JSON.stringify(githubData, null, 2)).then(() => {
+          showToast('Database JSON copied to clipboard! Ready to paste into initial_studio_data.json.', 'success');
+        }).catch(() => {
+          showToast('Clipboard access denied. Please download the backup JSON instead.', 'error');
+        });
+      };
+
+      // VIEW 1: HOME PAGE (No Tabs, Only Teachers List + Studio Admin in Corner)
       if (!currentTeacher) {
         return (
           <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'radial-gradient(circle at 50% 15%, #1E1B4B 0%, #0F172A 60%, #030712 100%)' }}>
@@ -1126,17 +1110,20 @@
                 teacher={editingTeacher}
                 onClose={() => { setIsAddTeacherOpen(false); setEditingTeacher(null); }}
                 onSave={(tData) => {
+                  let updatedTeachers;
                   if (editingTeacher) {
-                    setTeachers(teachers.map(t => t.id === editingTeacher.id ? { ...tData, id: editingTeacher.id } : t));
-                    showToast('Teacher updated!', 'success');
+                    updatedTeachers = teachers.map(t => t.id === editingTeacher.id ? { ...tData, id: editingTeacher.id } : t);
+                    showToast(`Teacher ${tData.name} updated!`, 'success');
                   } else {
                     const newId = (tData.username || 'teacher_' + Date.now()).toLowerCase().replace(/\s+/g, '');
-                    setTeachers([...teachers, { ...tData, id: newId, status: 'active' }]);
+                    const newTeacher = { ...tData, id: newId, status: 'active' };
+                    updatedTeachers = [...teachers, newTeacher];
                     showToast(`Teacher ${tData.name} created!`, 'success');
                   }
+                  setTeachers(updatedTeachers);
                   setIsAddTeacherOpen(false);
                   setEditingTeacher(null);
-                  syncWithCloud();
+                  syncWithCloud({ teachers: updatedTeachers });
                 }}
               />
             )}
@@ -1204,7 +1191,7 @@
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
                 <button onClick={() => setIsRescheduleOpen(true)} className="btn-secondary" style={{ fontSize: '0.85rem', padding: '0.45rem 0.85rem', color: '#A5B4FC' }}>
-                  <i className="fas fa-calendar-alt"></i> Reschedule This Week
+                  <i className="fas fa-calendar-alt"></i> Reschedule Class
                 </button>
                 <button onClick={() => setIsExtraClassOpen(true)} className="btn-secondary" style={{ fontSize: '0.85rem', padding: '0.45rem 0.85rem', color: '#34D399' }}>
                   <i className="fas fa-plus-circle"></i> + Extra Class
@@ -1257,7 +1244,7 @@
               <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: 'var(--radius-md)', padding: '0.75rem 1.25rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.85rem' }}>
                   <i className="fas fa-info-circle" style={{ color: '#818CF8' }}></i>
-                  <span><strong>One-Time Reschedule:</strong> {rescheduledClasses[0].studentName} moved to <strong>{rescheduledClasses[0].rescheduledDate} ({rescheduledClasses[0].rescheduledTime})</strong>. Regular schedule resumes next week.</span>
+                  <span><strong>Rescheduled Notice:</strong> {rescheduledClasses[0].studentName} moved to <strong>{rescheduledClasses[0].rescheduledDate} ({rescheduledClasses[0].rescheduledTime})</strong></span>
                 </div>
                 <button onClick={() => setRescheduledClasses([])} style={{ background: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', textDecoration: 'underline' }}>Dismiss</button>
               </div>
@@ -1281,7 +1268,6 @@
                 students={currentTeacherStudents}
                 onAddStudent={() => { setEditingStudent(null); setIsAddStudentOpen(true); }}
                 onEditStudent={(std) => { setEditingStudent(std); setIsAddStudentOpen(true); }}
-                onChangeRegularSchedule={(std) => setScheduleChangeTarget(std)}
                 onDeleteStudent={(stdId) => {
                   const s = students.find(x => x.id === stdId);
                   if (confirm(`Remove student "${s?.name}"?`)) {
@@ -1378,15 +1364,6 @@
             />
           )}
 
-          {/* PERMANENT SCHEDULE CHANGE MODAL (INSIDE STUDENTS DIRECTORY ONLY) */}
-          {scheduleChangeTarget && (
-            <ChangeRegularScheduleModal
-              student={scheduleChangeTarget}
-              onClose={() => setScheduleChangeTarget(null)}
-              onConfirm={handleConfirmPermanentScheduleChange}
-            />
-          )}
-
           {isMarkPaidModalOpen && markPaidTarget && (
             <MarkPaidModal
               target={markPaidTarget}
@@ -1437,10 +1414,6 @@
               classes={classesHistory.filter(c => c.studentId === profileViewingStudent.id)}
               payments={payments.filter(p => p.studentId === profileViewingStudent.id)}
               onClose={() => setProfileViewingStudent(null)}
-              onChangeSchedule={() => {
-                setScheduleChangeTarget(profileViewingStudent);
-                setProfileViewingStudent(null);
-              }}
               onEdit={() => {
                 setEditingStudent(profileViewingStudent);
                 setProfileViewingStudent(null);
@@ -1454,7 +1427,7 @@
       );
     }
 
-    // Attendance View Component
+    // Attendance View Component (WITH CLASS TIMINGS & NEXT CLASS DATE)
     function AttendanceView({ students, selectedDate, onDateChange, attendanceMap, onMarkAttendance, teacherName, onAddStudent, onViewProfile }) {
       const dayRecords = attendanceMap[selectedDate] || {};
 
@@ -1514,6 +1487,7 @@
                 const record = dayRecords[student.id];
                 const status = record?.status;
 
+                // Compute next class date display
                 const nextDate = student.nextClassDate || calculateNextClassDate(student.weeklyDay || student.classDays || 'Thursday');
                 const weeklyDayText = student.weeklyDay ? `Every ${student.weeklyDay}` : (student.classDays || '1 class / week');
                 const timingsText = student.classTimings || '4:00 PM IST';
@@ -1549,6 +1523,7 @@
                           </span>
                         </div>
 
+                        {/* CLASS TIMINGS & RECURRING DAY HIGHLIGHT */}
                         <div style={{ fontSize: '0.85rem', color: '#CBD5E1', marginTop: '0.35rem', display: 'flex', gap: '0.85rem', flexWrap: 'wrap', alignItems: 'center' }}>
                           <span style={{ color: '#FBBF24', fontWeight: 700 }}>
                             <i className="fas fa-clock"></i> {weeklyDayText} at {timingsText}
@@ -1562,12 +1537,6 @@
                             {student.completedClassesCount || 0} completed
                           </span>
                         </div>
-
-                        {student.pendingScheduleChange && (
-                          <div style={{ fontSize: '0.75rem', color: '#818CF8', marginTop: '0.25rem', fontWeight: 600 }}>
-                            <i className="fas fa-exchange-alt"></i> Schedule changing from next week to Every {student.pendingScheduleChange.newWeeklyDay} at {student.pendingScheduleChange.newTimings}
-                          </div>
-                        )}
 
                         {record?.reason && (
                           <div style={{ fontSize: '0.75rem', color: '#FBBF24', marginTop: '0.25rem' }}>
@@ -1641,8 +1610,8 @@
       );
     }
 
-    // Students Directory Component (WITH PERMANENT SCHEDULE CHANGE BUTTON)
-    function StudentsDirectoryView({ students, onAddStudent, onEditStudent, onChangeRegularSchedule, onDeleteStudent, onViewProfile }) {
+    // Students Directory Component (WITH CLASS TIMINGS & NEXT CLASS DATE)
+    function StudentsDirectoryView({ students, onAddStudent, onEditStudent, onDeleteStudent, onViewProfile }) {
       const [q, setQ] = useState('');
       const filtered = students.filter(s => s.name.toLowerCase().includes(q.toLowerCase()));
 
@@ -1668,7 +1637,7 @@
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
             {filtered.map(student => {
               const nextDate = student.nextClassDate || calculateNextClassDate(student.weeklyDay || student.classDays || 'Thursday');
               const weeklyDayText = student.weeklyDay ? `Every ${student.weeklyDay}` : (student.classDays || '1 class / week');
@@ -1691,40 +1660,14 @@
                     </div>
 
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                      {/* SCHEDULE BANNER WITH CHANGE BUTTON */}
-                      <div style={{ background: 'var(--bg-subtle)', padding: '0.75rem 0.85rem', borderRadius: 'var(--radius-sm)', marginBottom: '0.75rem', border: '1px solid var(--border-color)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div>
-                            <div style={{ color: '#FBBF24', fontWeight: 700, fontSize: '0.88rem' }}>
-                              <i className="fas fa-clock"></i> {weeklyDayText} at {timingsText}
-                            </div>
-                            <div style={{ color: '#A5B4FC', fontWeight: 700, marginTop: '0.2rem', fontSize: '0.82rem' }}>
-                              <i className="fas fa-calendar-alt"></i> Next Class: {formatReadableDate(nextDate)}
-                            </div>
-                          </div>
-
-                          <button
-                            onClick={() => onChangeRegularSchedule(student)}
-                            style={{
-                              background: 'rgba(99, 102, 241, 0.2)',
-                              color: '#A5B4FC',
-                              border: '1px solid rgba(99, 102, 241, 0.4)',
-                              borderRadius: 'var(--radius-sm)',
-                              padding: '0.3rem 0.6rem',
-                              fontSize: '0.75rem',
-                              fontWeight: 700
-                            }}
-                            title="Change permanent weekly day & timing (This week or Next week)"
-                          >
-                            <i className="fas fa-exchange-alt"></i> Change Schedule
-                          </button>
+                      {/* HIGHLIGHTED CLASS TIMINGS & NEXT CLASS DATE */}
+                      <div style={{ background: 'var(--bg-subtle)', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)', marginBottom: '0.75rem', border: '1px solid var(--border-color)' }}>
+                        <div style={{ color: '#FBBF24', fontWeight: 700, fontSize: '0.9rem' }}>
+                          <i className="fas fa-clock"></i> Timings: {weeklyDayText} at {timingsText}
                         </div>
-
-                        {student.pendingScheduleChange && (
-                          <div style={{ fontSize: '0.75rem', color: '#34D399', marginTop: '0.4rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.35rem' }}>
-                            <i className="fas fa-hourglass-half"></i> Starts Next Week: Every {student.pendingScheduleChange.newWeeklyDay} at {student.pendingScheduleChange.newTimings}
-                          </div>
-                        )}
+                        <div style={{ color: '#A5B4FC', fontWeight: 700, marginTop: '0.2rem' }}>
+                          <i className="fas fa-calendar-alt"></i> Next Class: {formatReadableDate(nextDate)}
+                        </div>
                       </div>
 
                       <div><strong>Package:</strong> {student.packageType || '4 Classes (₹6,000)'}</div>
@@ -1756,154 +1699,7 @@
       );
     }
 
-    // ==========================================
-    // PERMANENT SCHEDULE CHANGE MODAL
-    // (Inside Directory / Edit, Asks: This Week or Next Week)
-    // ==========================================
-    function ChangeRegularScheduleModal({ student, onClose, onConfirm }) {
-      const [newWeeklyDay, setNewWeeklyDay] = useState(student.weeklyDay || 'Thursday');
-      const [newTimings, setNewTimings] = useState(student.classTimings || '04:00 PM IST');
-      const [effectiveScope, setEffectiveScope] = useState('next_week'); // 'this_week' | 'next_week'
-      const [reason, setReason] = useState('Student regular timing update');
-
-      const handleSubmit = (e) => {
-        e.preventDefault();
-        onConfirm({
-          studentId: student.id,
-          newWeeklyDay,
-          newTimings,
-          effectiveScope,
-          reason
-        });
-      };
-
-      return (
-        <div className="modal-backdrop" onClick={onClose}>
-          <div className="modal-card" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'var(--primary-light)', color: '#818CF8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.15rem' }}>
-                  <i className="fas fa-calendar-alt"></i>
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
-                    Change Regular Schedule
-                  </h3>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {student.name} • Permanent Weekly Update
-                  </div>
-                </div>
-              </div>
-              <button onClick={onClose} style={{ color: 'var(--text-muted)', fontSize: '1.2rem' }}>
-                <i className="fas fa-times"></i>
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit}>
-              <div className="modal-body form-grid">
-                {/* Current Schedule Banner */}
-                <div style={{ gridColumn: '1 / -1', background: 'var(--bg-subtle)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', fontSize: '0.85rem' }}>
-                  Current Schedule: <strong>Every {student.weeklyDay || 'Thursday'} at {student.classTimings || '4:00 PM IST'}</strong>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" style={{ color: '#FBBF24' }}>
-                    New Weekly Regular Day *
-                  </label>
-                  <select value={newWeeklyDay} onChange={e => setNewWeeklyDay(e.target.value)}>
-                    <option value="Monday">Every Monday</option>
-                    <option value="Tuesday">Every Tuesday</option>
-                    <option value="Wednesday">Every Wednesday</option>
-                    <option value="Thursday">Every Thursday</option>
-                    <option value="Friday">Every Friday</option>
-                    <option value="Saturday">Every Saturday</option>
-                    <option value="Sunday">Every Sunday</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" style={{ color: '#FBBF24' }}>
-                    New Regular Timing (IST) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newTimings}
-                    onChange={e => setNewTimings(e.target.value)}
-                    placeholder="e.g. 02:00 PM IST or 12:00 PM IST"
-                  />
-                </div>
-
-                {/* WHEN TO APPLY: THIS WEEK OR NEXT WEEK */}
-                <div className="form-group" style={{ gridColumn: '1 / -1', marginTop: '0.5rem' }}>
-                  <label className="form-label" style={{ color: '#34D399', marginBottom: '0.5rem' }}>
-                    When does this regular change take effect? *
-                  </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                    <div
-                      onClick={() => setEffectiveScope('this_week')}
-                      style={{
-                        background: effectiveScope === 'this_week' ? 'rgba(99, 102, 241, 0.25)' : 'var(--bg-subtle)',
-                        border: `1px solid ${effectiveScope === 'this_week' ? 'var(--primary)' : 'var(--border-color)'}`,
-                        borderRadius: 'var(--radius-md)',
-                        padding: '0.85rem',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 800, color: effectiveScope === 'this_week' ? '#818CF8' : 'white', fontSize: '0.9rem' }}>
-                        <i className={effectiveScope === 'this_week' ? "fas fa-check-circle" : "far fa-circle"}></i>
-                        From THIS WEEK
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
-                        Moves this week's class to the new day ({newWeeklyDay}) immediately.
-                      </div>
-                    </div>
-
-                    <div
-                      onClick={() => setEffectiveScope('next_week')}
-                      style={{
-                        background: effectiveScope === 'next_week' ? 'rgba(99, 102, 241, 0.25)' : 'var(--bg-subtle)',
-                        border: `1px solid ${effectiveScope === 'next_week' ? 'var(--primary)' : 'var(--border-color)'}`,
-                        borderRadius: 'var(--radius-md)',
-                        padding: '0.85rem',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 800, color: effectiveScope === 'next_week' ? '#818CF8' : 'white', fontSize: '0.9rem' }}>
-                        <i className={effectiveScope === 'next_week' ? "fas fa-check-circle" : "far fa-circle"}></i>
-                        From NEXT WEEK
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
-                        Keeps this week on current day, switches permanently from next week.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label className="form-label">Reason / Notes</label>
-                  <input
-                    type="text"
-                    value={reason}
-                    onChange={e => setReason(e.target.value)}
-                    placeholder="e.g. Student requested slot change"
-                  />
-                </div>
-              </div>
-
-              <div className="modal-footer">
-                <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-                <button type="submit" className="btn-primary">
-                  <i className="fas fa-save"></i> Save Regular Schedule
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      );
-    }
-
-    // Student Modal (Add/Edit)
+    // Student Modal (Add/Edit) with Weekly Day, Timings, and Next Class Date
     function StudentModal({ student, teacher, onClose, onSave }) {
       const [formData, setFormData] = useState({
         name: student?.name || '',
@@ -1967,9 +1763,10 @@
                   </select>
                 </div>
 
+                {/* 1 CLASS PER WEEK SCHEDULE (WEEKLY DAY) */}
                 <div className="form-group">
                   <label className="form-label" style={{ color: '#FBBF24' }}>
-                    Weekly Class Day (1 class / week) *
+                    <i className="fas fa-calendar-day"></i> Weekly Class Day (1 class / week) *
                   </label>
                   <select value={formData.weeklyDay} onChange={e => handleWeeklyDayChange(e.target.value)}>
                     <option value="Monday">Every Monday</option>
@@ -1982,9 +1779,10 @@
                   </select>
                 </div>
 
+                {/* CLASS TIMINGS */}
                 <div className="form-group">
                   <label className="form-label" style={{ color: '#FBBF24' }}>
-                    Class Timings (e.g. 4pm, 12pm IST) *
+                    <i className="fas fa-clock"></i> Class Timings (e.g. 4pm, 12pm IST) *
                   </label>
                   <input
                     type="text"
@@ -1995,9 +1793,12 @@
                   />
                 </div>
 
+                {/* NEXT CLASS DATE */}
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <label className="form-label" style={{ color: '#A5B4FC' }}>Next Class Date *</label>
+                    <label className="form-label" style={{ color: '#A5B4FC' }}>
+                      <i className="fas fa-calendar-check"></i> Next Class Date *
+                    </label>
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, nextClassDate: calculateNextClassDate(prev.weeklyDay) }))}
@@ -2052,8 +1853,8 @@
       );
     }
 
-    // Student Profile Modal (WITH TIMINGS, NEXT CLASS & SCHEDULE CHANGE)
-    function StudentProfileModal({ student, classes, payments, onClose, onChangeSchedule, onEdit }) {
+    // Student Profile Modal (WITH TIMINGS & NEXT CLASS DATE)
+    function StudentProfileModal({ student, classes, payments, onClose, onEdit }) {
       const nextDate = student.nextClassDate || calculateNextClassDate(student.weeklyDay || student.classDays || 'Thursday');
       const weeklyDayText = student.weeklyDay ? `Every ${student.weeklyDay}` : (student.classDays || '1 class / week');
       const timingsText = student.classTimings || '4:00 PM IST';
@@ -2067,23 +1868,14 @@
             </div>
             <div className="modal-body">
               <div style={{ background: 'var(--bg-subtle)', padding: '1rem', borderRadius: 'var(--radius-md)', fontSize: '0.9rem', marginBottom: '1.25rem', border: '1px solid var(--border-color)' }}>
-                <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)', padding: '0.85rem 1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ color: '#FBBF24', fontWeight: 800, fontSize: '0.95rem' }}>
-                      <i className="fas fa-clock"></i> Schedule: {weeklyDayText} at {timingsText} (45 mins IST)
-                    </div>
-                    <div style={{ color: '#34D399', fontWeight: 800, marginTop: '0.25rem' }}>
-                      <i className="fas fa-calendar-check"></i> Next Class Date: {formatReadableDate(nextDate)} ({nextDate})
-                    </div>
+                {/* TIMINGS & NEXT CLASS DATE SPOTLIGHT */}
+                <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem' }}>
+                  <div style={{ color: '#FBBF24', fontWeight: 800, fontSize: '0.95rem' }}>
+                    <i className="fas fa-clock"></i> Schedule: {weeklyDayText} at {timingsText} (45 mins IST)
                   </div>
-
-                  <button
-                    onClick={onChangeSchedule}
-                    className="btn-secondary"
-                    style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
-                  >
-                    <i className="fas fa-exchange-alt"></i> Change Schedule
-                  </button>
+                  <div style={{ color: '#34D399', fontWeight: 800, marginTop: '0.25rem' }}>
+                    <i className="fas fa-calendar-check"></i> Next Class Date: {formatReadableDate(nextDate)} ({nextDate})
+                  </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
@@ -2112,7 +1904,7 @@
               </div>
             </div>
             <div className="modal-footer">
-              <button onClick={onEdit} className="btn-primary">Edit All Details</button>
+              <button onClick={onEdit} className="btn-primary">Edit Schedule & Details</button>
               <button onClick={onClose} className="btn-secondary">Close</button>
             </div>
           </div>
@@ -2120,7 +1912,7 @@
       );
     }
 
-    // Password Modal
+    // Passwords Modal
     function PasswordModal({ prompt, onClose, onSuccess }) {
       const [pwd, setPwd] = useState('');
       const [show, setShow] = useState(false);
@@ -2264,6 +2056,739 @@
       );
     }
 
+    // Student First Package Cycles View
+    function StudentFirstCyclesView({ students, onAddCycle, onAddClassDate, onDeleteClassDate, onMarkPaidClick }) {
+      const [selectedStudent, setSelectedStudent] = useState(null);
+      const [q, setQ] = useState('');
+      const filtered = students.filter(s => s.name.toLowerCase().includes(q.toLowerCase()));
+
+      if (selectedStudent) {
+        const student = students.find(s => s.id === selectedStudent.id) || selectedStudent;
+        const cycles = student.packageHistory || [];
+        const nextDate = student.nextClassDate || calculateNextClassDate(student.weeklyDay || 'Thursday');
+
+        return (
+          <div>
+            <div style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '1.25rem 1.5rem',
+              marginBottom: '1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                <button onClick={() => setSelectedStudent(null)} className="btn-back">
+                  <i className="fas fa-arrow-left"></i> Back to Students
+                </button>
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
+                    Cycles & Backlog for {student.name}
+                  </h3>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    Total: <strong style={{ color: '#34D399' }}>{student.completedClassesCount || 0} Classes</strong> • Timings: <strong>Every {student.weeklyDay || 'Thursday'} at {student.classTimings || '4pm'}</strong> • Next: <strong>{nextDate}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <button onClick={() => onAddCycle(student)} className="btn-primary">
+                <i className="fas fa-plus"></i> + Add New Cycle
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {cycles.length === 0 ? (
+                <div style={{ padding: '3rem', textAlign: 'center', background: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', color: 'var(--text-muted)' }}>
+                  <p>No cycles recorded yet.</p>
+                  <button onClick={() => onAddCycle(student)} className="btn-primary" style={{ marginTop: '1rem' }}>Create First Cycle</button>
+                </div>
+              ) : (
+                cycles.map((cycle, idx) => (
+                  <CycleItem
+                    key={cycle.cycleId || idx}
+                    cycle={cycle}
+                    student={student}
+                    onAddClassDate={() => onAddClassDate(student, cycle.cycleId || idx + 1)}
+                    onDeleteClassDate={(dStr) => onDeleteClassDate(student.id, cycle.cycleId || idx + 1, dStr)}
+                    onMarkPaid={() => onMarkPaidClick(student, cycle)}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div>
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Package Cycles & Backlog</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Select a student to inspect cycles, class dates, and pending payments</p>
+            </div>
+            <div style={{ minWidth: '260px' }}>
+              <input type="text" placeholder="Search student..." value={q} onChange={e => setQ(e.target.value)} style={{ width: '100%' }} />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+            {filtered.map(student => {
+              const cyclesCount = (student.packageHistory || []).length;
+              const hasPending = (student.packageHistory || []).some(p => p.feeStatus === 'pending');
+              const nextDate = student.nextClassDate || calculateNextClassDate(student.weeklyDay || 'Thursday');
+
+              return (
+                <div
+                  key={student.id}
+                  onClick={() => setSelectedStudent(student)}
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: 'var(--shadow-sm)' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{ width: '46px', height: '46px', borderRadius: '12px', background: student.avatarColor || '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800 }}>
+                        {student.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <h4 style={{ fontSize: '1.15rem', fontWeight: 800 }}>{student.name}</h4>
+                        <div style={{ fontSize: '0.8rem', color: '#FBBF24', fontWeight: 700 }}>
+                          Every {student.weeklyDay || 'Thursday'} at {student.classTimings || '4pm'}
+                        </div>
+                      </div>
+                    </div>
+                    {hasPending ? <span className="badge badge-pending">PENDING</span> : <span className="badge badge-paid">PAID</span>}
+                  </div>
+
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: '1rem' }}>
+                    <div><strong>Next Class Date:</strong> <span style={{ color: '#A5B4FC', fontWeight: 700 }}>{formatReadableDate(nextDate)}</span></div>
+                    <div><strong>Cycles Logged:</strong> <span style={{ color: '#818CF8', fontWeight: 700 }}>{cyclesCount} Cycles</span></div>
+                    <div><strong>Completed Classes:</strong> <span style={{ color: '#34D399', fontWeight: 700 }}>{student.completedClassesCount || 0} Classes</span></div>
+                  </div>
+
+                  <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.85rem', display: 'flex', justifyContent: 'space-between', color: '#818CF8', fontWeight: 700, fontSize: '0.85rem' }}>
+                    <span>Inspect All Cycles & Dates</span>
+                    <i className="fas fa-arrow-right"></i>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // Cycle Item
+    function CycleItem({ cycle, student, onAddClassDate, onDeleteClassDate, onMarkPaid }) {
+      const [expanded, setExpanded] = useState(true);
+      const classDates = cycle.classDates || [];
+      const limit = cycle.limit || 4;
+      const count = classDates.length || cycle.completedCount || 0;
+      const isPending = cycle.feeStatus === 'pending';
+
+      return (
+        <div style={{ background: 'var(--bg-surface)', border: `1px solid ${isPending ? 'rgba(245, 158, 11, 0.5)' : 'var(--border-color)'}`, borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+          <div
+            onClick={() => setExpanded(!expanded)}
+            style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', cursor: 'pointer', background: expanded ? 'var(--bg-surface-elevated)' : 'transparent', flexWrap: 'wrap' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: isPending ? 'rgba(245, 158, 11, 0.2)' : 'var(--primary-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isPending ? '#FBBF24' : 'white', fontWeight: 800 }}>
+                #{cycle.cycleId}
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                  <h4 style={{ fontWeight: 800, fontSize: '1.1rem' }}>Cycle #{cycle.cycleId}: {cycle.packageType || `${limit} Classes`}</h4>
+                  {isPending ? <span className="badge badge-pending">PENDING PAYMENT</span> : <span className="badge badge-paid">PAID</span>}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Fee: ₹{Number(cycle.packageAmount || 6000).toLocaleString('en-IN')} • Dates: {cycle.startDate} to {cycle.endDate}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+              {isPending && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onMarkPaid(); }}
+                  style={{ background: '#10B981', color: 'white', padding: '0.4rem 0.85rem', borderRadius: 'var(--radius-sm)', fontWeight: 700, fontSize: '0.8rem' }}
+                >
+                  <i className="fas fa-check-circle"></i> Mark as Paid
+                </button>
+              )}
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: count >= limit ? '#34D399' : '#818CF8' }}>{count} / {limit} Classes</div>
+              <i className={`fas fa-chevron-${expanded ? 'up' : 'down'}`} style={{ color: 'var(--text-muted)' }}></i>
+            </div>
+          </div>
+
+          {expanded && (
+            <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid var(--border-color)', background: 'var(--bg-subtle)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#A5B4FC' }}>
+                  <i className="fas fa-calendar-alt"></i> Class Dates in Cycle #{cycle.cycleId} ({classDates.length} Held):
+                </span>
+                <button onClick={onAddClassDate} className="btn-primary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
+                  <i className="fas fa-plus"></i> Add Class Date
+                </button>
+              </div>
+
+              {classDates.length === 0 ? (
+                <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>No dates logged yet in this cycle.</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.65rem' }}>
+                  {classDates.map((dStr, dIdx) => (
+                    <div key={dIdx} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', padding: '0.65rem 0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#F8FAFC' }}>{dStr}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Class #{dIdx + 1} • 45m IST</div>
+                      </div>
+                      <button onClick={() => onDeleteClassDate(dStr)} style={{ color: '#F87171', background: 'none' }} title="Delete"><i className="fas fa-trash"></i></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Student Payments View
+    function StudentPaymentsView({ students, payments, onRecordPayment, onEditPayment, onDeletePayment }) {
+      const [selectedStudent, setSelectedStudent] = useState(null);
+      const [q, setQ] = useState('');
+      const filtered = students.filter(s => s.name.toLowerCase().includes(q.toLowerCase()));
+
+      if (selectedStudent) {
+        const student = students.find(s => s.id === selectedStudent.id) || selectedStudent;
+        const studentPayments = payments.filter(p => p.studentId === student.id);
+        const totalPaid = studentPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+
+        return (
+          <div>
+            <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                <button onClick={() => setSelectedStudent(null)} className="btn-back"><i className="fas fa-arrow-left"></i> Back</button>
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Payment History for {student.name}</h3>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    Schedule: <strong>Every {student.weeklyDay || 'Thursday'} at {student.classTimings || '4pm'}</strong> • Last Payment Date: <strong>{student.lastPaymentDate || 'N/A'}</strong>
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => onRecordPayment(student)} className="btn-primary"><i className="fas fa-plus"></i> Record Payment</button>
+            </div>
+
+            <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', overflowX: 'auto' }}>
+              <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', fontWeight: 700, color: 'var(--text-muted)' }}>
+                Recorded Payments (Total: ₹{totalPaid.toLocaleString('en-IN')})
+              </div>
+              {studentPayments.length === 0 ? (
+                <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>No payments recorded yet.</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                      <th style={{ padding: '0.85rem 1.25rem' }}>Payment Date</th>
+                      <th style={{ padding: '0.85rem 1.25rem' }}>Amount</th>
+                      <th style={{ padding: '0.85rem 1.25rem' }}>Package</th>
+                      <th style={{ padding: '0.85rem 1.25rem' }}>Method</th>
+                      <th style={{ padding: '0.85rem 1.25rem' }}>Remarks</th>
+                      <th style={{ padding: '0.85rem 1.25rem', textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {studentPayments.map(p => (
+                      <tr key={p.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '0.85rem 1.25rem', fontWeight: 800, color: '#A5B4FC' }}>{p.paymentDate}</td>
+                        <td style={{ padding: '0.85rem 1.25rem', fontWeight: 800, color: '#34D399' }}>₹{Number(p.amount || 0).toLocaleString('en-IN')}</td>
+                        <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-muted)' }}>{p.packageType}</td>
+                        <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-muted)' }}>{p.paymentMethod || 'UPI'}</td>
+                        <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>{p.remarks}</td>
+                        <td style={{ padding: '0.85rem 1.25rem', textAlign: 'right' }}>
+                          <button onClick={() => onEditPayment(p)} className="btn-secondary" style={{ padding: '0.3rem 0.65rem', fontSize: '0.8rem', marginRight: '0.4rem' }}>Edit Date</button>
+                          <button onClick={() => onDeletePayment(p.id)} style={{ color: '#F87171', background: 'none' }}><i className="fas fa-trash"></i></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div>
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.25rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Payments & Fees Directory</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Inspect status, last payment date, and edit past payment dates</p>
+            </div>
+            <div style={{ minWidth: '260px' }}>
+              <input type="text" placeholder="Search student..." value={q} onChange={e => setQ(e.target.value)} style={{ width: '100%' }} />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+            {filtered.map(student => {
+              const studentPayments = payments.filter(p => p.studentId === student.id);
+              const totalAmount = studentPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+
+              return (
+                <div
+                  key={student.id}
+                  onClick={() => setSelectedStudent(student)}
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: 'var(--shadow-sm)' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: student.avatarColor || '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800 }}>
+                        {student.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <h4 style={{ fontSize: '1.1rem', fontWeight: 800 }}>{student.name}</h4>
+                        <div style={{ fontSize: '0.8rem', color: '#FBBF24', fontWeight: 700 }}>Every {student.weeklyDay || 'Thursday'} at {student.classTimings || '4pm'}</div>
+                      </div>
+                    </div>
+                    <span className={`badge badge-${student.feeStatus || 'paid'}`}>{(student.feeStatus || 'paid').toUpperCase()}</span>
+                  </div>
+
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: '1rem' }}>
+                    <div><strong>Last Payment Date:</strong> <span style={{ color: '#A5B4FC', fontWeight: 700 }}>{student.lastPaymentDate || 'N/A'}</span></div>
+                    <div><strong>Total Paid to Date:</strong> <span style={{ color: '#34D399', fontWeight: 800 }}>₹{totalAmount.toLocaleString('en-IN')}</span> ({studentPayments.length} payments)</div>
+                  </div>
+
+                  <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.85rem', display: 'flex', justifyContent: 'space-between', color: '#818CF8', fontWeight: 700, fontSize: '0.85rem' }}>
+                    <span>Inspect Payment Dates</span>
+                    <i className="fas fa-arrow-right"></i>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // Modal: Reschedule
+    function RescheduleModal({ students, onClose, onSave }) {
+      const [studentId, setStudentId] = useState(students[0]?.id || '');
+      const [originalDate, setOriginalDate] = useState(new Date().toISOString().split('T')[0]);
+      const [originalTime, setOriginalTime] = useState('04:00 PM IST');
+      const [rescheduledDate, setRescheduledDate] = useState(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
+      const [rescheduledTime, setRescheduledTime] = useState('02:00 PM IST');
+      const [reason, setReason] = useState('Student requested reschedule');
+
+      return (
+        <div className="modal-backdrop" onClick={onClose}>
+          <div className="modal-card" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Reschedule Class</h3>
+              <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
+            </div>
+            <form onSubmit={e => { e.preventDefault(); onSave({ studentId, originalDate, originalTime, rescheduledDate, rescheduledTime, reason }); }}>
+              <div className="modal-body form-grid">
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Student *</label>
+                  <select value={studentId} onChange={e => setStudentId(e.target.value)}>
+                    {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Original Date *</label>
+                  <input type="date" required value={originalDate} onChange={e => setOriginalDate(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Original Time</label>
+                  <input type="text" value={originalTime} onChange={e => setOriginalTime(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">New Rescheduled Date *</label>
+                  <input type="date" required value={rescheduledDate} onChange={e => setRescheduledDate(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">New Rescheduled Time *</label>
+                  <input type="text" required value={rescheduledTime} onChange={e => setRescheduledTime(e.target.value)} />
+                </div>
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Reason</label>
+                  <input type="text" value={reason} onChange={e => setReason(e.target.value)} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary">Confirm Reschedule</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Modal: Extra Class
+    function ExtraClassModal({ students, onClose, onSave }) {
+      const [studentId, setStudentId] = useState(students[0]?.id || '');
+      const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+      const [time, setTime] = useState('06:00 PM IST');
+      const [remarks, setRemarks] = useState('Extra class session (counted)');
+
+      return (
+        <div className="modal-backdrop" onClick={onClose}>
+          <div className="modal-card" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Schedule Extra Class</h3>
+              <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
+            </div>
+            <form onSubmit={e => { e.preventDefault(); onSave({ studentId, date, time, remarks }); }}>
+              <div className="modal-body form-grid">
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Student *</label>
+                  <select value={studentId} onChange={e => setStudentId(e.target.value)}>
+                    {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Date (IST) *</label>
+                  <input type="date" required value={date} onChange={e => setDate(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Time (45 Mins IST) *</label>
+                  <input type="text" required value={time} onChange={e => setTime(e.target.value)} />
+                </div>
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Remarks</label>
+                  <input type="text" value={remarks} onChange={e => setRemarks(e.target.value)} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary" style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}>Schedule Extra Class</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Modal: Mark Paid
+    function MarkPaidModal({ target, onClose, onConfirm }) {
+      const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+      const [amount, setAmount] = useState(target.cycle.packageAmount || 6000);
+      const [method, setMethod] = useState('UPI / GPay');
+      const [remarks, setRemarks] = useState(`Payment cleared for Cycle #${target.cycle.cycleId}`);
+
+      return (
+        <div className="modal-backdrop" onClick={onClose}>
+          <div className="modal-card" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Mark Cycle #{target.cycle.cycleId} as Paid</h3>
+              <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
+            </div>
+            <form onSubmit={e => { e.preventDefault(); onConfirm(paymentDate, amount, method, remarks); }}>
+              <div className="modal-body form-grid">
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <div style={{ background: 'var(--bg-subtle)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
+                    Student: <strong>{target.student.name}</strong> • Package: <strong>{target.cycle.packageType}</strong>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Date Payment Received *</label>
+                  <input type="date" required value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Amount (₹) *</label>
+                  <input type="number" required value={amount} onChange={e => setAmount(Number(e.target.value))} />
+                </div>
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Mode</label>
+                  <select value={method} onChange={e => setMethod(e.target.value)}>
+                    <option value="UPI / GPay / Paytm">UPI / GPay / Paytm</option>
+                    <option value="Bank Net Banking / NEFT">Bank Net Banking / NEFT</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Card">Card</option>
+                  </select>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary" style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}>Save as Paid</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Modal: Record/Edit Payment
+    function PaymentModal({ students, targetStudent, editingPayment, onClose, onSave }) {
+      const [studentId, setStudentId] = useState(editingPayment?.studentId || targetStudent?.id || students[0]?.id || '');
+      const [amount, setAmount] = useState(editingPayment?.amount || 6000);
+      const [paymentDate, setPaymentDate] = useState(editingPayment?.paymentDate || new Date().toISOString().split('T')[0]);
+      const [packageType, setPackageType] = useState(editingPayment?.packageType || '4 Classes Package (₹6,000)');
+      const [paymentMethod, setPaymentMethod] = useState(editingPayment?.paymentMethod || 'UPI / GPay');
+      const [remarks, setRemarks] = useState(editingPayment?.remarks || 'Tuition fee');
+
+      return (
+        <div className="modal-backdrop" onClick={onClose}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>{editingPayment ? 'Edit Payment Date' : 'Record Tuition Payment'}</h3>
+              <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
+            </div>
+            <form onSubmit={e => {
+              e.preventDefault();
+              const std = students.find(s => s.id === studentId);
+              onSave({ studentId, studentName: std ? std.name : 'Student', amount: Number(amount), paymentDate, packageType, paymentMethod, remarks });
+            }}>
+              <div className="modal-body form-grid">
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Student *</label>
+                  <select value={studentId} onChange={e => setStudentId(e.target.value)}>
+                    {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Amount (₹) *</label>
+                  <input type="number" required value={amount} onChange={e => setAmount(Number(e.target.value))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Payment Date (IST) *</label>
+                  <input type="date" required value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Method</label>
+                  <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
+                    <option value="UPI / GPay / Paytm">UPI / GPay / Paytm</option>
+                    <option value="Bank Net Banking / NEFT">Bank Net Banking / NEFT</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Card">Card</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Package</label>
+                  <input type="text" value={packageType} onChange={e => setPackageType(e.target.value)} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary">Save Payment</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Modal: Add Cycle
+    function AddCycleModal({ student, onClose, onSave }) {
+      const [packageType, setPackageType] = useState('4 Classes Package (₹6,000)');
+      const [limit, setLimit] = useState(4);
+      const [packageAmount, setPackageAmount] = useState(6000);
+      const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+      const [feeStatus, setFeeStatus] = useState('paid');
+      const [remarks, setRemarks] = useState('');
+
+      return (
+        <div className="modal-backdrop" onClick={onClose}>
+          <div className="modal-card" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Add Package Cycle for {student.name}</h3>
+              <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
+            </div>
+            <form onSubmit={e => { e.preventDefault(); onSave({ studentId: student.id, packageType, limit: Number(limit), packageAmount: Number(packageAmount), startDate, feeStatus, remarks }); }}>
+              <div className="modal-body form-grid">
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Package Plan *</label>
+                  <select value={packageType} onChange={e => {
+                    const val = e.target.value;
+                    setPackageType(val);
+                    if (val.includes('12')) { setLimit(12); setPackageAmount(15000); }
+                    else if (val.includes('4')) { setLimit(4); setPackageAmount(6000); }
+                  }}>
+                    <option value="4 Classes Package (₹6,000)">4 Classes Package (₹6,000)</option>
+                    <option value="12 Classes Package (₹15,000)">12 Classes Package (₹15,000)</option>
+                    <option value="Custom Classes Package">Custom Package</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Class Limit *</label>
+                  <input type="number" required min={1} value={limit} onChange={e => setLimit(Number(e.target.value))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Amount (₹) *</label>
+                  <input type="number" required value={packageAmount} onChange={e => setPackageAmount(Number(e.target.value))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Start Date *</label>
+                  <input type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Payment Status *</label>
+                  <select value={feeStatus} onChange={e => setFeeStatus(e.target.value)}>
+                    <option value="paid">Paid</option>
+                    <option value="pending">Pending</option>
+                  </select>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary">Create Cycle</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Modal: Add Date to Cycle
+    function AddClassDateModal({ student, cycleId, onClose, onSave }) {
+      const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+      const [remarks, setRemarks] = useState('Completed 45-min music class');
+
+      return (
+        <div className="modal-backdrop" onClick={onClose}>
+          <div className="modal-card" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Add Class Date (Cycle #{cycleId})</h3>
+              <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
+            </div>
+            <form onSubmit={e => { e.preventDefault(); onSave({ studentId: student.id, cycleId, date, remarks }); }}>
+              <div className="modal-body">
+                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                  <label className="form-label">Date Class Held (IST) *</label>
+                  <input type="date" required value={date} onChange={e => setDate(e.target.value)} style={{ width: '100%' }} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Remarks</label>
+                  <input type="text" value={remarks} onChange={e => setRemarks(e.target.value)} style={{ width: '100%' }} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary">Save Date</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Modal: Teacher Add/Edit
+    function TeacherModal({ teacher, onClose, onSave }) {
+      const [formData, setFormData] = useState({
+        name: teacher?.name || '',
+        username: teacher?.username || '',
+        password: teacher?.password || '',
+        specialization: teacher?.specialization || 'Music Instructor'
+      });
+
+      return (
+        <div className="modal-backdrop" onClick={onClose}>
+          <div className="modal-card" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>{teacher ? 'Edit Teacher' : 'Add New Teacher'}</h3>
+              <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
+            </div>
+            <form onSubmit={e => { e.preventDefault(); onSave(formData); }}>
+              <div className="modal-body form-grid">
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Teacher Name *</label>
+                  <input type="text" required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">User ID *</label>
+                  <input type="text" required value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Password *</label>
+                  <input type="text" required value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary">Save Teacher</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Modal: Edit Sheet URL
+    function EditSheetUrlModal({ currentUrl, onClose, onSave }) {
+      const [url, setUrl] = useState(currentUrl);
+      return (
+        <div className="modal-backdrop" onClick={onClose}>
+          <div className="modal-card" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Google Sheet Link</h3>
+              <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
+            </div>
+            <form onSubmit={e => { e.preventDefault(); onSave(url.trim()); }}>
+              <div className="modal-body">
+                <label className="form-label">Spreadsheet URL</label>
+                <input type="url" required value={url} onChange={e => setUrl(e.target.value)} style={{ width: '100%', marginTop: '0.4rem' }} />
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary">Save Link</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Modal: Leave Reason
+    function LeaveReasonModal({ data, onClose, onConfirm }) {
+      const [by, setBy] = useState('student');
+      const [reason, setReason] = useState('');
+      const quick = by === 'student' ? ['Student unwell', 'Exam conflict', 'Family emergency', 'Informed in advance'] : ['Teacher rescheduled', 'Studio maintenance', 'Holiday'];
+
+      return (
+        <div className="modal-backdrop" onClick={onClose}>
+          <div className="modal-card" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Record Class Leave</h3>
+              <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
+            </div>
+            <form onSubmit={e => { e.preventDefault(); onConfirm(`[${by === 'student' ? 'Student Leave' : 'Teacher Rescheduled'}] ${reason || 'Informed previously'}`); }}>
+              <div className="modal-body">
+                <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', color: '#FDE68A', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                  <i className="fas fa-info-circle"></i> <strong>Class Not Counted:</strong> Leave does not deduct from student package.
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <button type="button" onClick={() => setBy('student')} className={by === 'student' ? 'btn-primary' : 'btn-secondary'} style={{ justifyContent: 'center' }}>By Student</button>
+                  <button type="button" onClick={() => setBy('teacher')} className={by === 'teacher' ? 'btn-primary' : 'btn-secondary'} style={{ justifyContent: 'center' }}>By Teacher</button>
+                </div>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                  {quick.map((q, i) => (
+                    <button key={i} type="button" onClick={() => setReason(q)} style={{ background: reason === q ? 'var(--primary)' : 'var(--bg-subtle)', color: reason === q ? 'white' : 'var(--text-muted)', border: '1px solid var(--border-color)', padding: '0.3rem 0.6rem', borderRadius: 'var(--radius-full)', fontSize: '0.75rem' }}>{q}</button>
+                  ))}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Specific Reason *</label>
+                  <textarea rows={2} required value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason for leave..." style={{ width: '100%', resize: 'none' }} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary" style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' }}>Save Leave</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
     // Helper Stat Card
     function StatCard({ label, value, icon, color }) {
       return (
@@ -2317,6 +2842,170 @@
                style={{ color: toast.type === 'success' ? '#34D399' : toast.type === 'error' ? '#F87171' : '#818CF8' }}
             ></i>
             <span>{toast.message}</span>
+          </div>
+        </div>
+      );
+    }
+
+    
+    // ==========================================
+    // PERMANENT SCHEDULE CHANGE MODAL (STUDENTS DIRECTORY ONLY)
+    // ==========================================
+    function ChangeRegularScheduleModal({ student, onClose, onConfirm }) {
+      const [newWeeklyDay, setNewWeeklyDay] = useState(student.weeklyDay || 'Thursday');
+      const [newTimings, setNewTimings] = useState(student.classTimings || '04:00 PM IST');
+      const [effectiveScope, setEffectiveScope] = useState('next_week'); // 'this_week' | 'next_week'
+      const [reason, setReason] = useState('Student regular timing update');
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        onConfirm({
+          studentId: student.id,
+          newWeeklyDay,
+          newTimings,
+          effectiveScope,
+          reason
+        });
+      };
+
+      return (
+        <div className="modal-backdrop" onClick={onClose}>
+          <div className="modal-card" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'var(--primary-light)', color: '#818CF8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.15rem' }}>
+                  <i className="fas fa-calendar-alt"></i>
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 800, fontFamily: 'var(--font-heading)' }}>
+                    Change Regular Schedule
+                  </h3>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {student.name} • Permanent Weekly Update
+                  </div>
+                </div>
+              </div>
+              <button onClick={onClose} style={{ color: 'var(--text-muted)', fontSize: '1.2rem' }}>
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              <div className="modal-body form-grid">
+                <div style={{ gridColumn: '1 / -1', background: 'var(--bg-subtle)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', fontSize: '0.85rem' }}>
+                  Current Schedule: <strong>Every {student.weeklyDay || 'Thursday'} at {student.classTimings || '4:00 PM IST'}</strong>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" style={{ color: '#FBBF24', fontWeight: 700 }}>
+                    <i className="fas fa-calendar-day"></i> New Recurring Weekly Day
+                  </label>
+                  <select
+                    className="form-control"
+                    value={newWeeklyDay}
+                    onChange={e => setNewWeeklyDay(e.target.value)}
+                    required
+                  >
+                    <option value="Monday">Monday</option>
+                    <option value="Tuesday">Tuesday</option>
+                    <option value="Wednesday">Wednesday</option>
+                    <option value="Thursday">Thursday</option>
+                    <option value="Friday">Friday</option>
+                    <option value="Saturday">Saturday</option>
+                    <option value="Sunday">Sunday</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" style={{ color: '#FBBF24', fontWeight: 700 }}>
+                    <i className="fas fa-clock"></i> New Class Timings (IST)
+                  </label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. 02:00 PM IST"
+                    value={newTimings}
+                    onChange={e => setNewTimings(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label" style={{ fontWeight: 800, color: '#38BDF8' }}>
+                    <i className="fas fa-layer-group"></i> When Should This Change Take Effect?
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.35rem' }}>
+                    <label style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.3rem',
+                      padding: '0.85rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: effectiveScope === 'this_week' ? '2px solid var(--primary)' : '1px solid var(--border-color)',
+                      background: effectiveScope === 'this_week' ? 'var(--primary-light)' : 'var(--bg-subtle)',
+                      cursor: 'pointer'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.9rem' }}>
+                        <input
+                          type="radio"
+                          name="effectiveScope"
+                          value="this_week"
+                          checked={effectiveScope === 'this_week'}
+                          onChange={() => setEffectiveScope('this_week')}
+                        />
+                        <span>Apply from THIS WEEK</span>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', paddingLeft: '1.35rem' }}>
+                        Immediately shifts this week's class to the new day and time.
+                      </span>
+                    </label>
+
+                    <label style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.3rem',
+                      padding: '0.85rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: effectiveScope === 'next_week' ? '2px solid #10B981' : '1px solid var(--border-color)',
+                      background: effectiveScope === 'next_week' ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-subtle)',
+                      cursor: 'pointer'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.9rem' }}>
+                        <input
+                          type="radio"
+                          name="effectiveScope"
+                          value="next_week"
+                          checked={effectiveScope === 'next_week'}
+                          onChange={() => setEffectiveScope('next_week')}
+                        />
+                        <span style={{ color: effectiveScope === 'next_week' ? '#34D399' : 'inherit' }}>Apply from NEXT WEEK</span>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', paddingLeft: '1.35rem' }}>
+                        Keeps this week on regular day. New schedule starts right after this week's class.
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Reason for Schedule Change (Optional)</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. Student requested Thursday -> Saturday permanently"
+                    value={reason}
+                    onChange={e => setReason(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary">
+                  <i className="fas fa-check"></i> Save Permanent Schedule
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       );
