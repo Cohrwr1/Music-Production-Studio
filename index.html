@@ -498,8 +498,8 @@
       if (student.packageHistory && Array.isArray(student.packageHistory) && student.packageHistory.length > 0) {
         return student.packageHistory.reduce((acc, p) => {
           if (p.classDates && Array.isArray(p.classDates)) {
-            const uniqueDates = [...new Set(p.classDates)];
-            return acc + uniqueDates.length;
+            // Count every class session taken (supports 2 or more classes on the same day)
+            return acc + p.classDates.length;
           }
           return acc + (Number(p.completedCount) || 0);
         }, 0);
@@ -1140,7 +1140,7 @@
         syncWithCloud();
       };
 
-      // Add Date to Cycle
+      // Add Date to Cycle (Allows multiple classes on the same day, e.g. 2 classes on 08.02.2025)
       const handleSaveClassDateToCycle = (dateData) => {
         const student = students.find(s => s.id === dateData.studentId);
         if (!student) return;
@@ -1151,10 +1151,14 @@
 
         let targetCycle = { ...pkgs[cycleIdx] };
         let dates = targetCycle.classDates ? [...targetCycle.classDates] : [];
-        if (!dates.includes(dateData.date)) {
+        
+        // Add one or multiple sessions for this date
+        const countToAdd = Math.max(1, Number(dateData.sessionCount) || 1);
+        for (let i = 0; i < countToAdd; i++) {
           dates.push(dateData.date);
-          dates.sort();
         }
+        dates.sort();
+
         targetCycle.classDates = dates;
         targetCycle.completedCount = dates.length;
         targetCycle.endDate = dates[dates.length - 1];
@@ -1171,7 +1175,7 @@
 
         setIsAddCycleClassDateOpen(false);
         setCycleClassTarget(null);
-        showToast(`Class date ${dateData.date} added to Cycle #${dateData.cycleId}!`, 'success');
+        showToast(`${countToAdd > 1 ? countToAdd + ' classes' : 'Class session'} on ${formatDateMDY(dateData.date)} added to Cycle #${dateData.cycleId}!`, 'success');
         syncWithCloud();
       };
 
@@ -1656,14 +1660,25 @@
                 students={currentTeacherStudents}
                 onAddCycle={(std) => { setCycleTargetStudent(std); setIsAddCycleModalOpen(true); }}
                 onAddClassDate={(std, cId) => { setCycleClassTarget({ student: std, cycleId: cId }); setIsAddCycleClassDateOpen(true); }}
-                onDeleteClassDate={(stdId, cId, dateToRemove) => {
-                  if (confirm(`Delete class date ${dateToRemove} from Cycle ${cId}?`)) {
+                onDeleteClassDate={(stdId, cId, dateIdx, dateToRemove) => {
+                  if (confirm(`Delete class session on ${formatDateMDY(dateToRemove)} from Cycle #${cId}?`)) {
                     setStudents(students.map(s => {
                       if (s.id === stdId && s.packageHistory) {
                         const pkgs = s.packageHistory.map(p => {
-                          if (p.cycleId === cId) {
-                            const newDates = (p.classDates || []).filter(d => d !== dateToRemove);
-                            return { ...p, classDates: newDates, completedCount: newDates.length };
+                          if (p.cycleId === cId && p.classDates) {
+                            const newDates = [...p.classDates];
+                            if (typeof dateIdx === 'number' && dateIdx >= 0 && dateIdx < newDates.length) {
+                              newDates.splice(dateIdx, 1);
+                            } else {
+                              const removeIdx = newDates.indexOf(dateToRemove);
+                              if (removeIdx !== -1) newDates.splice(removeIdx, 1);
+                            }
+                            return {
+                              ...p,
+                              classDates: newDates,
+                              completedCount: newDates.length,
+                              endDate: newDates.length > 0 ? newDates[newDates.length - 1] : p.startDate
+                            };
                           }
                           return p;
                         });
@@ -1672,7 +1687,7 @@
                       }
                       return s;
                     }));
-                    showToast('Date removed.', 'info');
+                    showToast('Class session removed.', 'info');
                     syncWithCloud();
                   }
                 }}
@@ -3066,7 +3081,7 @@
                     cycle={cycle}
                     student={student}
                     onAddClassDate={() => onAddClassDate(student, cycle.cycleId || idx + 1)}
-                    onDeleteClassDate={(dStr) => onDeleteClassDate(student.id, cycle.cycleId || idx + 1, dStr)}
+                    onDeleteClassDate={(dIdx, dStr) => onDeleteClassDate(student.id, cycle.cycleId || idx + 1, dIdx, dStr)}
                     onMarkPaid={() => onMarkPaidClick(student, cycle)}
                   />
                 ))
@@ -3199,7 +3214,7 @@
                         <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#F8FAFC' }}>{formatDateMDY(dStr)}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Class #{dIdx + 1} • 45m IST</div>
                       </div>
-                      <button onClick={() => onDeleteClassDate(dStr)} style={{ color: '#F87171', background: 'none' }} title="Delete"><i className="fas fa-trash"></i></button>
+                      <button onClick={() => onDeleteClassDate(dIdx, dStr)} style={{ color: '#F87171', background: 'none' }} title="Delete"><i className="fas fa-trash"></i></button>
                     </div>
                   ))}
                 </div>
@@ -3724,32 +3739,74 @@
       );
     }
 
-    // Modal: Add Date to Cycle
+    // Modal: Add Date to Cycle (Supports multiple classes on a single day)
     function AddClassDateModal({ student, cycleId, onClose, onSave }) {
       const [date, setDate] = useState(getLocalDateString());
+      const [sessionCount, setSessionCount] = useState(1);
       const [remarks, setRemarks] = useState('Completed 45-min music class');
 
       return (
         <div className="modal-backdrop" onClick={onClose}>
-          <div className="modal-card" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal-card" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Add Class Date (Cycle #{cycleId})</h3>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Add Class Session (Cycle #{cycleId})</h3>
               <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
             </div>
-            <form onSubmit={e => { e.preventDefault(); onSave({ studentId: student.id, cycleId, date, remarks }); }}>
-              <div className="modal-body">
-                <div className="form-group" style={{ marginBottom: '1rem' }}>
-                  <label className="form-label">Date Class Held (IST) *</label>
-                  <input type="date" required value={date} onChange={e => setDate(e.target.value)} style={{ width: '100%' }} />
+            <form onSubmit={e => {
+              e.preventDefault();
+              onSave({ studentId: student.id, cycleId, date, sessionCount: Number(sessionCount), remarks });
+            }}>
+              <div className="modal-body form-grid">
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label" style={{ color: '#818CF8', fontWeight: 700 }}>
+                    <i className="fas fa-calendar-alt"></i> Date Class Held (mm.dd.yyyy) *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={date}
+                    onChange={e => setDate(e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                  <div style={{ fontSize: '0.8rem', color: '#38BDF8', marginTop: '0.25rem' }}>
+                    Selected: <strong>{formatDateMDY(date)}</strong>
+                  </div>
                 </div>
-                <div className="form-group">
+
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label" style={{ color: '#FBBF24', fontWeight: 700 }}>
+                    <i className="fas fa-layer-group"></i> How Many Classes Taken on This Day? *
+                  </label>
+                  <select
+                    value={sessionCount}
+                    onChange={e => setSessionCount(Number(e.target.value))}
+                    style={{ width: '100%', borderColor: 'rgba(251, 191, 36, 0.4)' }}
+                  >
+                    <option value="1">1 Class (Standard Session - 45 mins)</option>
+                    <option value="2">2 Classes (Double Session - 2 classes on this day)</option>
+                    <option value="3">3 Classes (Triple Session)</option>
+                  </select>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem', display: 'block' }}>
+                    Select 2 if student took two classes on this day. Both will be counted in the cycle.
+                  </span>
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <label className="form-label">Remarks</label>
-                  <input type="text" value={remarks} onChange={e => setRemarks(e.target.value)} style={{ width: '100%' }} />
+                  <input
+                    type="text"
+                    value={remarks}
+                    onChange={e => setRemarks(e.target.value)}
+                    placeholder="e.g. Completed regular class or double session"
+                    style={{ width: '100%' }}
+                  />
                 </div>
               </div>
               <div className="modal-footer">
                 <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-                <button type="submit" className="btn-primary">Save Date</button>
+                <button type="submit" className="btn-primary">
+                  <i className="fas fa-save"></i> Save {sessionCount > 1 ? `${sessionCount} Classes` : 'Class Date'}
+                </button>
               </div>
             </form>
           </div>
