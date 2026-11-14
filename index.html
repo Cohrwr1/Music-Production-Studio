@@ -2166,7 +2166,12 @@
                             </span>
                             <span>•</span>
                             <span style={{ color: '#34D399', fontWeight: 600 }}>
-                              {getStudentCompletedClassesCount(student)} completed
+                              {(() => {
+                              const cCycle = student.packageHistory && student.packageHistory.length > 0 ? student.packageHistory[student.packageHistory.length - 1] : null;
+                              const cCount = cCycle ? (cCycle.classDates?.length || cCycle.completedCount || 0) : (student.completedClassesCount || 0);
+                              const cLimit = cCycle ? (cCycle.limit || student.packageLimit || 4) : (student.packageLimit || 4);
+                              return `${cCount}/${cLimit} classes`;
+                            })()}
                             </span>
                           </div>
 
@@ -2335,10 +2340,7 @@
                       <div>
                         <strong>Completed Classes:</strong>{' '}
                         <span style={{ color: '#34D399', fontWeight: 800, fontSize: '0.95rem' }}>
-                          {completedCount} Class{completedCount === 1 ? '' : 'es'}
-                        </span>{' '}
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                          ({currentCycleCompleted}/{currentCycleLimit} in cycle)
+                          {currentCycleCompleted}/{currentCycleLimit} classes
                         </span>
                       </div>
                       <div><strong>Last Class:</strong> {formatDateMDY(student.lastClassDate)}</div>
@@ -2764,7 +2766,12 @@
                   <div><strong>Phone:</strong> {student.phone || 'N/A'}</div>
                   <div><strong>Email:</strong> {student.email || 'N/A'}</div>
                   <div><strong>Package:</strong> {formatPackageDisplay(student.packageType, student.packageLimit, student.packageAmount)}</div>
-                  <div><strong>Total Completed:</strong> <span style={{ color: '#34D399', fontWeight: 800 }}>{getStudentCompletedClassesCount(student)} classes</span></div>
+                  <div><strong>Completed Classes:</strong> <span style={{ color: '#34D399', fontWeight: 800 }}>{(() => {
+                    const cCycle = student.packageHistory && student.packageHistory.length > 0 ? student.packageHistory[student.packageHistory.length - 1] : null;
+                    const cCount = cCycle ? (cCycle.classDates?.length || cCycle.completedCount || 0) : (student.completedClassesCount || 0);
+                    const cLimit = cCycle ? (cCycle.limit || student.packageLimit || 4) : (student.packageLimit || 4);
+                    return `${cCount}/${cLimit} classes`;
+                  })()}</span></div>
                   <div><strong>Last Class:</strong> {formatDateMDY(student.lastClassDate)}</div>
                   <div><strong>Last Payment:</strong> {formatDateMDY(student.lastPaymentDate)}</div>
                 </div>
@@ -3135,7 +3142,12 @@
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: '1rem' }}>
                     <div><strong>Next Class Date:</strong> <span style={{ color: '#38BDF8', fontWeight: 800 }}>📅 {formatDateMDY(nextDate)}</span></div>
                     <div><strong>Cycles Logged:</strong> <span style={{ color: '#818CF8', fontWeight: 700 }}>{cyclesCount} Cycles</span></div>
-                    <div><strong>Completed Classes:</strong> <span style={{ color: '#34D399', fontWeight: 700 }}>{getStudentCompletedClassesCount(student)} Classes</span></div>
+                    <div><strong>Completed Classes:</strong> <span style={{ color: '#34D399', fontWeight: 700 }}>{(() => {
+                          const cCycle = student.packageHistory && student.packageHistory.length > 0 ? student.packageHistory[student.packageHistory.length - 1] : null;
+                          const cCount = cCycle ? (cCycle.classDates?.length || cCycle.completedCount || 0) : (student.completedClassesCount || 0);
+                          const cLimit = cCycle ? (cCycle.limit || student.packageLimit || 4) : (student.packageLimit || 4);
+                          return `${cCount}/${cLimit} classes`;
+                        })()}</span></div>
                   </div>
 
                   <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.85rem', display: 'flex', justifyContent: 'space-between', color: '#818CF8', fontWeight: 700, fontSize: '0.85rem' }}>
