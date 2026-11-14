@@ -2329,11 +2329,9 @@
                     </div>
 
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.65 }}>
-                      <div><strong>Next Class Date:</strong> <span style={{ color: '#38BDF8', fontWeight: 800 }}>📅 {formatDateMDY(nextDate)} ({formatReadableDate(nextDate)})</span></div>
-                      <div><strong>Regular Schedule:</strong> <span style={{ color: '#FBBF24', fontWeight: 700 }}>{weeklyDayText} at {timingsText}</span></div>
                       {(student.dob || student.age) && (
-                        <div style={{ color: '#38BDF8', fontWeight: 600 }}>
-                          <i className="fas fa-birthday-cake"></i> DOB: <strong>{formatDateMDY(student.dob)}</strong> {student.age ? `(Age: ${student.age} yrs)` : ''}
+                        <div>
+                          <strong>DOB:</strong> {formatDateMDY(student.dob)} {student.age ? `(Age: ${student.age} yrs)` : ''}
                         </div>
                       )}
                       <div><strong>Package:</strong> {formatPackageDisplay(student.packageType, student.packageLimit, student.packageAmount)}</div>
