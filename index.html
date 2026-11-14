@@ -622,6 +622,8 @@
       const [editingTeacher, setEditingTeacher] = useState(null);
 
       const [isAddCycleModalOpen, setIsAddCycleModalOpen] = useState(false);
+      const [isEditCycleModalOpen, setIsEditCycleModalOpen] = useState(false);
+      const [editingCycleTarget, setEditingCycleTarget] = useState(null); // { student, cycle }
       const [cycleTargetStudent, setCycleTargetStudent] = useState(null);
 
       const [isAddCycleClassDateOpen, setIsAddCycleClassDateOpen] = useState(false);
@@ -1140,6 +1142,72 @@
         syncWithCloud();
       };
 
+      // Edit Cycle Details (StartDate, EndDate, Limit, Amount, Status)
+      const handleSaveEditCycle = (cycleData) => {
+        setStudents(students.map(s => {
+          if (s.id === cycleData.studentId && s.packageHistory) {
+            const pkgs = s.packageHistory.map(p => {
+              if (p.cycleId === cycleData.cycleId) {
+                return {
+                  ...p,
+                  startDate: cycleData.startDate,
+                  endDate: cycleData.endDate,
+                  limit: Number(cycleData.limit) || p.limit,
+                  packageAmount: Number(cycleData.packageAmount) || p.packageAmount,
+                  packageType: cycleData.packageType || p.packageType,
+                  feeStatus: cycleData.feeStatus || p.feeStatus,
+                  remarks: cycleData.remarks !== undefined ? cycleData.remarks : p.remarks
+                };
+              }
+              return p;
+            });
+            const lastPkg = pkgs[pkgs.length - 1];
+            const isLatest = lastPkg && lastPkg.cycleId === cycleData.cycleId;
+            return {
+              ...s,
+              packageHistory: pkgs,
+              packageType: isLatest ? (cycleData.packageType || s.packageType) : s.packageType,
+              packageLimit: isLatest ? (Number(cycleData.limit) || s.packageLimit) : s.packageLimit,
+              packageAmount: isLatest ? (Number(cycleData.packageAmount) || s.packageAmount) : s.packageAmount,
+              feeStatus: isLatest ? (cycleData.feeStatus || s.feeStatus) : s.feeStatus
+            };
+          }
+          return s;
+        }));
+        setIsEditCycleModalOpen(false);
+        setEditingCycleTarget(null);
+        showToast(Cycle # updated successfully!, 'success');
+        syncWithCloud();
+      };
+
+      // Delete Cycle
+      const handleDeleteCycle = (studentId, cycleId) => {
+        const student = students.find(s => s.id === studentId);
+        if (!student) return;
+        if (confirm(Delete Cycle # for ? All class sessions inside Cycle # will be removed.)) {
+          setStudents(students.map(s => {
+            if (s.id === studentId && s.packageHistory) {
+              let pkgs = s.packageHistory.filter(p => p.cycleId !== cycleId);
+              pkgs = pkgs.map((p, idx) => ({ ...p, cycleId: idx + 1 }));
+              const total = pkgs.reduce((a, b) => a + (b.classDates ? b.classDates.length : (b.completedCount || 0)), 0);
+              const lastPkg = pkgs.length > 0 ? pkgs[pkgs.length - 1] : null;
+              return {
+                ...s,
+                packageHistory: pkgs,
+                completedClassesCount: total,
+                packageType: lastPkg ? lastPkg.packageType : s.packageType,
+                packageLimit: lastPkg ? lastPkg.limit : s.packageLimit,
+                packageAmount: lastPkg ? lastPkg.packageAmount : s.packageAmount,
+                feeStatus: lastPkg ? lastPkg.feeStatus : 'paid'
+              };
+            }
+            return s;
+          }));
+          showToast(Cycle # deleted., 'info');
+          syncWithCloud();
+        }
+      };
+
       // Add Date to Cycle (Allows multiple classes on the same day, e.g. 2 classes on 08.02.2025)
       const handleSaveClassDateToCycle = (dateData) => {
         const student = students.find(s => s.id === dateData.studentId);
@@ -1161,7 +1229,14 @@
 
         targetCycle.classDates = dates;
         targetCycle.completedCount = dates.length;
-        targetCycle.endDate = dates[dates.length - 1];
+        if (dates.length > 0) {
+          dates.sort();
+          // If the earliest session is earlier than the cycle startDate, automatically align startDate
+          if (dates[0] < targetCycle.startDate || targetCycle.startDate >= '2026-11-13') {
+            targetCycle.startDate = dates[0];
+          }
+          targetCycle.endDate = dates[dates.length - 1];
+        }
         pkgs[cycleIdx] = targetCycle;
 
         const totalCompleted = pkgs.reduce((acc, p) => acc + (p.classDates ? p.classDates.length : (p.completedCount || 0)), 0);
@@ -1660,6 +1735,8 @@
                 students={currentTeacherStudents}
                 onAddCycle={(std) => { setCycleTargetStudent(std); setIsAddCycleModalOpen(true); }}
                 onAddClassDate={(std, cId) => { setCycleClassTarget({ student: std, cycleId: cId }); setIsAddCycleClassDateOpen(true); }}
+                onEditCycle={(std, cyc) => { setEditingCycleTarget({ student: std, cycle: cyc }); setIsEditCycleModalOpen(true); }}
+                onDeleteCycle={(stdId, cId) => handleDeleteCycle(stdId, cId)}
                 onDeleteClassDate={(stdId, cId, dateIdx, dateToRemove) => {
                   if (confirm(`Delete class session on ${formatDateMDY(dateToRemove)} from Cycle #${cId}?`)) {
                     setStudents(students.map(s => {
@@ -1773,6 +1850,14 @@
               student={cycleTargetStudent}
               onClose={() => { setIsAddCycleModalOpen(false); setCycleTargetStudent(null); }}
               onSave={handleSaveNewCycle}
+            />
+          )}
+
+          {isEditCycleModalOpen && editingCycleTarget && (
+            <EditCycleModal
+              target={editingCycleTarget}
+              onClose={() => { setIsEditCycleModalOpen(false); setEditingCycleTarget(null); }}
+              onSave={handleSaveEditCycle}
             />
           )}
 
@@ -2525,6 +2610,22 @@
                   <input type="text" required placeholder="Enter student's full name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
                 </div>
 
+                {/* STUDENT JOINING / START DATE */}
+                <div className="form-group">
+                  <label className="form-label" style={{ color: '#818CF8', fontWeight: 700 }}>
+                    <i className="fas fa-calendar-plus"></i> Joining / Start Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.joiningDate}
+                    onChange={e => setFormData({ ...formData, joiningDate: e.target.value })}
+                  />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Current: <strong>{formatDateMDY(formData.joiningDate)}</strong> (Cycle #1 begins on this date)
+                  </span>
+                </div>
+
                 <div className="form-group">
                   <label className="form-label">Lesson Option *</label>
                   <select value={formData.musicClass} onChange={e => setFormData({ ...formData, musicClass: e.target.value })}>
@@ -3029,7 +3130,7 @@
     }
 
     // Student First Package Cycles View
-    function StudentFirstCyclesView({ students, onAddCycle, onAddClassDate, onDeleteClassDate, onMarkPaidClick }) {
+    function StudentFirstCyclesView({ students, onAddCycle, onAddClassDate, onDeleteClassDate, onMarkPaidClick, onEditCycle, onDeleteCycle }) {
       const [selectedStudent, setSelectedStudent] = useState(null);
       const [q, setQ] = useState('');
       const filtered = students.filter(s => s.name.toLowerCase().includes(q.toLowerCase()));
@@ -3088,6 +3189,8 @@
                     onAddClassDate={() => onAddClassDate(student, cycle.cycleId || idx + 1)}
                     onDeleteClassDate={(dIdx, dStr) => onDeleteClassDate(student.id, cycle.cycleId || idx + 1, dIdx, dStr)}
                     onMarkPaid={() => onMarkPaidClick(student, cycle)}
+                    onEditCycle={() => onEditCycle && onEditCycle(student, cycle)}
+                    onDeleteCycle={() => onDeleteCycle && onDeleteCycle(student.id, cycle.cycleId || idx + 1)}
                   />
                 ))
               )}
@@ -3161,7 +3264,7 @@
     }
 
     // Cycle Item
-    function CycleItem({ cycle, student, onAddClassDate, onDeleteClassDate, onMarkPaid }) {
+    function CycleItem({ cycle, student, onAddClassDate, onDeleteClassDate, onMarkPaid, onEditCycle, onDeleteCycle }) {
       const [expanded, setExpanded] = useState(true);
       const classDates = cycle.classDates || [];
       const limit = cycle.limit || 4;
@@ -3189,11 +3292,33 @@
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+              {onEditCycle && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onEditCycle(); }}
+                  className="btn-secondary"
+                  style={{ padding: '0.35rem 0.65rem', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                  title="Edit Cycle Dates, Start Date, Fee & Limit"
+                >
+                  <i className="fas fa-edit"></i> Edit Cycle
+                </button>
+              )}
+              {onDeleteCycle && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onDeleteCycle(); }}
+                  style={{ color: '#F87171', background: 'none', border: 'none', padding: '0.35rem 0.45rem', fontSize: '0.85rem', cursor: 'pointer' }}
+                  title="Delete this cycle"
+                >
+                  <i className="fas fa-trash"></i>
+                </button>
+              )}
               {isPending && (
                 <button
+                  type="button"
                   onClick={(e) => { e.stopPropagation(); onMarkPaid(); }}
-                  style={{ background: '#10B981', color: 'white', padding: '0.4rem 0.85rem', borderRadius: 'var(--radius-sm)', fontWeight: 700, fontSize: '0.8rem' }}
+                  style={{ background: '#10B981', color: 'white', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-sm)', fontWeight: 700, fontSize: '0.78rem' }}
                 >
                   <i className="fas fa-check-circle"></i> Mark as Paid
                 </button>
@@ -3742,6 +3867,150 @@
               <div className="modal-footer">
                 <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
                 <button type="submit" className="btn-primary">Create Cycle</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Modal: Edit Cycle (Allows modifying start date, end date, fee, package limit, fee status)
+    function EditCycleModal({ target, onClose, onSave }) {
+      const { student, cycle } = target;
+      const [startDate, setStartDate] = useState(cycle.startDate || getLocalDateString());
+      const [endDate, setEndDate] = useState(cycle.endDate || getLocalDateString());
+      const [limit, setLimit] = useState(Number(cycle.limit) || 4);
+      const [packageAmount, setPackageAmount] = useState(Number(cycle.packageAmount) || 6000);
+      const [packageType, setPackageType] = useState(cycle.packageType || '4 Classes Package (₹6,000)');
+      const [feeStatus, setFeeStatus] = useState(cycle.feeStatus || 'paid');
+      const [remarks, setRemarks] = useState(cycle.remarks || '');
+
+      const classDates = cycle.classDates || [];
+      const hasDates = classDates.length > 0;
+
+      const handleAutoAlignDates = () => {
+        if (hasDates) {
+          const sorted = [...classDates].sort();
+          setStartDate(sorted[0]);
+          setEndDate(sorted[sorted.length - 1]);
+        }
+      };
+
+      return (
+        <div className="modal-backdrop" onClick={onClose}>
+          <div className="modal-card" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Edit Cycle #{cycle.cycleId} for {student.name}</h3>
+              <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
+            </div>
+            <form onSubmit={e => {
+              e.preventDefault();
+              onSave({
+                studentId: student.id,
+                cycleId: cycle.cycleId,
+                startDate,
+                endDate,
+                limit: Number(limit) || 4,
+                packageAmount: Number(packageAmount) || 6000,
+                packageType: formatPackageDisplay(packageType, limit, packageAmount),
+                feeStatus,
+                remarks
+              });
+            }}>
+              <div className="modal-body form-grid">
+                {/* START DATE & END DATE */}
+                <div className="form-group">
+                  <label className="form-label" style={{ color: '#818CF8', fontWeight: 700 }}>
+                    <i className="fas fa-calendar-alt"></i> Cycle Start Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                  />
+                  <span style={{ fontSize: '0.75rem', color: '#38BDF8', marginTop: '0.2rem', display: 'block' }}>
+                    Current: <strong>{formatDateMDY(startDate)}</strong>
+                  </span>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" style={{ color: '#818CF8', fontWeight: 700 }}>
+                    <i className="fas fa-calendar-check"></i> Cycle End Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                  />
+                  <span style={{ fontSize: '0.75rem', color: '#38BDF8', marginTop: '0.2rem', display: 'block' }}>
+                    Current: <strong>{formatDateMDY(endDate)}</strong>
+                  </span>
+                </div>
+
+                {hasDates && (
+                  <div style={{ gridColumn: '1 / -1', background: 'rgba(99, 102, 241, 0.1)', border: '1px dashed rgba(99, 102, 241, 0.3)', borderRadius: '6px', padding: '0.6rem 0.85rem' }}>
+                    <button
+                      type="button"
+                      onClick={handleAutoAlignDates}
+                      style={{ background: 'none', border: 'none', color: '#38BDF8', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: 0 }}
+                    >
+                      <i className="fas fa-magic"></i> Auto-Align to Logged Sessions: {formatDateMDY(classDates[0])} &rarr; {formatDateMDY(classDates[classDates.length - 1])}
+                    </button>
+                  </div>
+                )}
+
+                {/* LIMIT & AMOUNT */}
+                <div className="form-group">
+                  <label className="form-label" style={{ color: '#FBBF24', fontWeight: 700 }}>Class Limit (Total Sessions) *</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    max="200"
+                    value={limit}
+                    onChange={e => setLimit(Number(e.target.value))}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" style={{ color: '#34D399', fontWeight: 700 }}>Package Fee (₹) *</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={packageAmount}
+                    onChange={e => setPackageAmount(Number(e.target.value))}
+                  />
+                </div>
+
+                {/* PAYMENT STATUS */}
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Fee Payment Status *</label>
+                  <select value={feeStatus} onChange={e => setFeeStatus(e.target.value)}>
+                    <option value="paid">Paid</option>
+                    <option value="pending">Pending Payment</option>
+                  </select>
+                </div>
+
+                {/* REMARKS */}
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Cycle Remarks</label>
+                  <input
+                    type="text"
+                    value={remarks}
+                    onChange={e => setRemarks(e.target.value)}
+                    placeholder="e.g. Backlog cycle or initial enrollment"
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary">
+                  <i className="fas fa-save"></i> Save Changes
+                </button>
               </div>
             </form>
           </div>
