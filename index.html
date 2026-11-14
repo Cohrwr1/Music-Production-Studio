@@ -1176,7 +1176,7 @@
         }));
         setIsEditCycleModalOpen(false);
         setEditingCycleTarget(null);
-        showToast(Cycle # updated successfully!, 'success');
+        showToast(`Cycle #${cycleData.cycleId} updated successfully!`, 'success');
         syncWithCloud();
       };
 
@@ -1184,7 +1184,7 @@
       const handleDeleteCycle = (studentId, cycleId) => {
         const student = students.find(s => s.id === studentId);
         if (!student) return;
-        if (confirm(Delete Cycle # for ? All class sessions inside Cycle # will be removed.)) {
+        if (confirm(`Delete Cycle #${cycleId} for ${student.name}? All class sessions inside Cycle #${cycleId} will be removed.`)) {
           setStudents(students.map(s => {
             if (s.id === studentId && s.packageHistory) {
               let pkgs = s.packageHistory.filter(p => p.cycleId !== cycleId);
@@ -1203,7 +1203,7 @@
             }
             return s;
           }));
-          showToast(Cycle # deleted., 'info');
+          showToast(`Cycle #${cycleId} deleted.`, 'info');
           syncWithCloud();
         }
       };
