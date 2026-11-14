@@ -359,18 +359,70 @@
     }
 
     // Bulletproof Local Date Parser (sets time to 12:00 PM local noon to prevent midnight/timezone shifts)
+    // Supports YYYY-MM-DD, YYYY.MM.DD, and MM.DD.YYYY formats
     function parseLocalDate(dateStr) {
       if (!dateStr) return new Date();
       if (dateStr instanceof Date) return dateStr;
       const clean = String(dateStr).split('T')[0].trim();
-      const parts = clean.split('-');
+      const parts = clean.split(/[-./]/);
       if (parts.length === 3) {
-        const y = parseInt(parts[0], 10);
-        const m = parseInt(parts[1], 10) - 1;
-        const d = parseInt(parts[2], 10);
-        return new Date(y, m, d, 12, 0, 0);
+        if (parts[0].length === 4) {
+          // YYYY-MM-DD or YYYY.MM.DD
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const d = parseInt(parts[2], 10);
+          return new Date(y, m, d, 12, 0, 0);
+        } else if (parts[2].length === 4) {
+          // MM.DD.YYYY or DD.MM.YYYY
+          let m = parseInt(parts[0], 10) - 1;
+          let d = parseInt(parts[1], 10);
+          const y = parseInt(parts[2], 10);
+          if (parseInt(parts[0], 10) > 12) {
+            d = parseInt(parts[0], 10);
+            m = parseInt(parts[1], 10) - 1;
+          }
+          return new Date(y, m, d, 12, 0, 0);
+        }
       }
       return new Date();
+    }
+
+    // Universal Helper: Formats any date string to mm.dd.yyyy format
+    function formatDateMDY(dateStr) {
+      if (!dateStr || dateStr === 'N/A' || dateStr === 'Not scheduled') return dateStr || 'N/A';
+      try {
+        const clean = String(dateStr).split('T')[0].trim();
+        const parts = clean.split(/[-./]/);
+        if (parts.length === 3) {
+          if (parts[0].length === 4) {
+            // YYYY-MM-DD or YYYY.MM.DD
+            const y = parts[0];
+            const m = String(parseInt(parts[1], 10)).padStart(2, '0');
+            const d = String(parseInt(parts[2], 10)).padStart(2, '0');
+            return `${m}.${d}.${y}`;
+          } else if (parts[2].length === 4) {
+            // MM.DD.YYYY or DD.MM.YYYY
+            let m = parts[0].padStart(2, '0');
+            let d = parts[1].padStart(2, '0');
+            const y = parts[2];
+            if (parseInt(parts[0], 10) > 12) {
+              d = parts[0].padStart(2, '0');
+              m = parts[1].padStart(2, '0');
+            }
+            return `${m}.${d}.${y}`;
+          }
+        }
+        const parsed = parseLocalDate(clean);
+        if (parsed && !isNaN(parsed.getTime())) {
+          const m = String(parsed.getMonth() + 1).padStart(2, '0');
+          const d = String(parsed.getDate()).padStart(2, '0');
+          const y = parsed.getFullYear();
+          return `${m}.${d}.${y}`;
+        }
+        return dateStr;
+      } catch (e) {
+        return dateStr;
+      }
     }
 
     // Helper: Calculate target day in THIS current week
@@ -439,13 +491,32 @@
       return pkgType;
     }
 
+    // Universal Helper: Calculate true completed classes for a student strictly from recorded cycle class dates
+    // Prevents accidental double-clicks or repeated clicks from artificially inflating class count
+    function getStudentCompletedClassesCount(student) {
+      if (!student) return 0;
+      if (student.packageHistory && Array.isArray(student.packageHistory) && student.packageHistory.length > 0) {
+        return student.packageHistory.reduce((acc, p) => {
+          if (p.classDates && Array.isArray(p.classDates)) {
+            const uniqueDates = [...new Set(p.classDates)];
+            return acc + uniqueDates.length;
+          }
+          return acc + (Number(p.completedCount) || 0);
+        }, 0);
+      }
+      return Number(student.completedClassesCount) || 0;
+    }
+
     function formatReadableDate(dateStr) {
-      if (!dateStr) return 'Not scheduled';
+      if (!dateStr || dateStr === 'Not scheduled') return 'Not scheduled';
       try {
         const d = parseLocalDate(dateStr);
-        return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const dayName = days[d.getDay()];
+        const mdy = formatDateMDY(dateStr);
+        return `${dayName}, ${mdy}`;
       } catch (e) {
-        return dateStr;
+        return formatDateMDY(dateStr);
       }
     }
 
@@ -455,9 +526,16 @@
       const [students, setStudents] = useState(() => {
         try {
           const saved = localStorage.getItem('studio_v7_students');
-          return saved ? JSON.parse(saved) : (initData.students || []);
+          const raw = saved ? JSON.parse(saved) : (initData.students || []);
+          return (raw || []).map(s => ({
+            ...s,
+            completedClassesCount: getStudentCompletedClassesCount(s)
+          }));
         } catch (e) {
-          return initData.students || [];
+          return (initData.students || []).map(s => ({
+            ...s,
+            completedClassesCount: getStudentCompletedClassesCount(s)
+          }));
         }
       });
 
@@ -593,8 +671,12 @@
           localStorage.setItem('studio_v7_teachers', JSON.stringify(d.teachers));
         }
         if (Array.isArray(d.students) && d.students.length > 0) {
-          setStudents(d.students);
-          localStorage.setItem('studio_v7_students', JSON.stringify(d.students));
+          const sanitized = d.students.map(s => ({
+            ...s,
+            completedClassesCount: getStudentCompletedClassesCount(s)
+          }));
+          setStudents(sanitized);
+          localStorage.setItem('studio_v7_students', JSON.stringify(sanitized));
         }
         if (Array.isArray(d.payments)) {
           setPayments(d.payments);
@@ -720,7 +802,7 @@
         return students.filter(s => (s.teacherId || 'gaurav') === currentTeacher.id);
       }, [students, currentTeacher]);
 
-      // Attendance Action
+      // Attendance Action with Double-Click Protection & Idempotent Counting
       const handleAttendanceClick = (studentId, status) => {
         const student = students.find(s => s.id === studentId);
         if (!student) return;
@@ -736,6 +818,15 @@
       const executeAttendanceMarking = (studentId, status, leaveReason = '') => {
         const student = students.find(s => s.id === studentId);
         if (!student) return;
+
+        const currentDayRecord = attendanceMap[selectedDate]?.[studentId];
+        const previousStatus = currentDayRecord?.status;
+
+        // IDEMPOTENCY GUARD: If already marked with this exact status today, do not duplicate or re-increment!
+        if (previousStatus === status) {
+          showToast(`${student.name} is already marked ${status.toUpperCase()} for ${selectedDate}!`, 'info');
+          return;
+        }
 
         const istTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }) + ' IST';
         const isCounted = (status === 'present' || status === 'absent');
@@ -758,87 +849,123 @@
           ? 'Present (Class Counted)' 
           : status === 'absent' 
             ? 'Absent - Uninformed (Class Counted)' 
-            : `Leave - Informed (Class NOT Deducted - ${leaveReason})`;
+            : `Leave - Informed (Class NOT Deducted${leaveReason ? ' - ' + leaveReason : ''})`;
 
-        setClassesHistory(prev => [
-          {
-            id: 'cls_' + studentId + '_' + Date.now(),
-            studentId,
-            studentName: student.name,
-            teacherId: student.teacherId || 'gaurav',
-            teacherName: student.teacherName || 'Gaurav',
-            date: selectedDate,
-            time: (student.classTimings || '45 mins') + ' IST',
-            classNumber: (student.completedClassesCount || 0) + (isCounted ? 1 : 0),
-            status: statusLabel,
-            remarks: leaveReason || (status === 'present' ? 'Attended 45-min music session' : 'Absent without prior notice')
-          },
-          ...prev
-        ]);
+        // Deduplicated classesHistory: at most 1 entry per student per date
+        setClassesHistory(prev => {
+          const filtered = prev.filter(c => !(c.studentId === studentId && c.date === selectedDate));
+          return [
+            {
+              id: 'cls_' + studentId + '_' + selectedDate,
+              studentId,
+              studentName: student.name,
+              teacherId: student.teacherId || 'gaurav',
+              teacherName: student.teacherName || 'Gaurav',
+              date: selectedDate,
+              time: (student.classTimings || '45 mins') + ' IST',
+              classNumber: (student.completedClassesCount || 0) + (isCounted && !currentDayRecord?.isCounted ? 1 : 0),
+              status: statusLabel,
+              remarks: leaveReason || (status === 'present' ? 'Attended 45-min music session' : 'Absent without prior notice')
+            },
+            ...filtered
+          ];
+        });
 
-        if (!isCounted) {
-          showToast(`Marked LEAVE for ${student.name} (Class NOT deducted)`, 'info');
-          syncWithCloud();
-          return;
-        }
-
-        // Advance Next Class Date by +7 days when marked Present!
-        const autoNextDate = calculateNextClassDate(student.weeklyDay || student.classDays || 'Thursday', selectedDate);
+        // Advance Next Class Date when marked Present/Absent
+        const autoNextDate = isCounted 
+          ? calculateNextClassDate(student.weeklyDay || student.classDays || 'Thursday', selectedDate)
+          : student.nextClassDate;
 
         let updatedStudents = students.map(s => {
           if (s.id === studentId) {
-            let pkgs = s.packageHistory ? [...s.packageHistory] : [];
-            const newTotal = (s.completedClassesCount || 0) + 1;
-            let currentCycleCount = (s.currentCycleCompleted || 0) + 1;
+            let pkgs = s.packageHistory ? JSON.parse(JSON.stringify(s.packageHistory)) : [];
             let currentLimit = s.packageLimit || 4;
             let feeStatus = s.feeStatus;
 
             if (pkgs.length === 0) {
-              pkgs.push({
-                cycleId: 1,
-                packageType: s.packageType || '4 Classes Package (₹6,000)',
-                packageAmount: s.packageAmount || 6000,
-                limit: currentLimit,
-                completedCount: 1,
-                startDate: selectedDate,
-                endDate: selectedDate,
-                feeStatus: 'paid',
-                classDates: [selectedDate]
-              });
-            } else {
-              let latestPkg = { ...pkgs[pkgs.length - 1] };
-              if ((latestPkg.classDates?.length || latestPkg.completedCount || 0) >= latestPkg.limit) {
-                const nextCycleId = pkgs.length + 1;
+              if (isCounted) {
                 pkgs.push({
-                  cycleId: nextCycleId,
+                  cycleId: 1,
                   packageType: s.packageType || `${currentLimit} Classes Package`,
-                  packageAmount: s.packageAmount || (currentLimit === 12 ? 15000 : 6000),
+                  packageAmount: s.packageAmount || 6000,
                   limit: currentLimit,
                   completedCount: 1,
                   startDate: selectedDate,
                   endDate: selectedDate,
-                  feeStatus: 'pending',
-                  remarks: `Cycle ${nextCycleId} auto-started. Payment Pending.`,
+                  feeStatus: 'paid',
                   classDates: [selectedDate]
                 });
-                currentCycleCount = 1;
-                feeStatus = 'pending';
-                showToast(`Cycle #${nextCycleId} started for ${s.name} with Status: PENDING PAYMENT`, 'error');
+              }
+            } else {
+              if (isCounted) {
+                // Check if selectedDate already exists in ANY cycle
+                let dateAlreadyExists = false;
+                pkgs.forEach(pkg => {
+                  if (pkg.classDates && pkg.classDates.includes(selectedDate)) {
+                    dateAlreadyExists = true;
+                  }
+                });
+
+                // ONLY add date if it is not already recorded!
+                if (!dateAlreadyExists) {
+                  let latestPkg = pkgs[pkgs.length - 1];
+                  let dates = latestPkg.classDates ? [...latestPkg.classDates] : [];
+
+                  if (dates.length >= latestPkg.limit) {
+                    const nextCycleId = pkgs.length + 1;
+                    pkgs.push({
+                      cycleId: nextCycleId,
+                      packageType: s.packageType || `${currentLimit} Classes Package`,
+                      packageAmount: s.packageAmount || (currentLimit === 12 ? 15000 : 6000),
+                      limit: currentLimit,
+                      completedCount: 1,
+                      startDate: selectedDate,
+                      endDate: selectedDate,
+                      feeStatus: 'pending',
+                      remarks: `Cycle ${nextCycleId} auto-started. Payment Pending.`,
+                      classDates: [selectedDate]
+                    });
+                    feeStatus = 'pending';
+                    showToast(`Cycle #${nextCycleId} started for ${s.name} with Status: PENDING PAYMENT`, 'error');
+                  } else {
+                    dates.push(selectedDate);
+                    dates.sort();
+                    latestPkg.classDates = dates;
+                    latestPkg.completedCount = dates.length;
+                    latestPkg.endDate = dates[dates.length - 1];
+                    pkgs[pkgs.length - 1] = latestPkg;
+                  }
+                }
               } else {
-                let dates = latestPkg.classDates ? [...latestPkg.classDates] : [];
-                if (!dates.includes(selectedDate)) dates.push(selectedDate);
-                latestPkg.classDates = dates;
-                latestPkg.completedCount = dates.length;
-                latestPkg.endDate = selectedDate;
-                pkgs[pkgs.length - 1] = latestPkg;
+                // Status is 'leave': if selectedDate was in any cycle, remove it!
+                pkgs.forEach(pkg => {
+                  if (pkg.classDates && pkg.classDates.includes(selectedDate)) {
+                    pkg.classDates = pkg.classDates.filter(d => d !== selectedDate);
+                    pkg.completedCount = pkg.classDates.length;
+                    if (pkg.classDates.length > 0) {
+                      pkg.endDate = pkg.classDates[pkg.classDates.length - 1];
+                    }
+                  }
+                });
               }
             }
 
+            // Calculate TRUE total completed classes strictly from distinct classDates
+            const trueTotalCompleted = pkgs.reduce((acc, p) => {
+              if (p.classDates && Array.isArray(p.classDates)) {
+                return acc + p.classDates.length;
+              }
+              return acc + (Number(p.completedCount) || 0);
+            }, 0);
+
+            const activeCycle = pkgs[pkgs.length - 1];
+            const currentCycleCount = activeCycle ? (activeCycle.classDates?.length || activeCycle.completedCount || 0) : 0;
+
             return {
               ...s,
-              completedClassesCount: newTotal,
+              completedClassesCount: trueTotalCompleted,
               currentCycleCompleted: currentCycleCount,
-              lastClassDate: selectedDate,
+              lastClassDate: isCounted ? selectedDate : s.lastClassDate,
               nextClassDate: autoNextDate || s.nextClassDate,
               feeStatus,
               packageHistory: pkgs
@@ -848,8 +975,11 @@
         });
 
         setStudents(updatedStudents);
-        if (status === 'present') showToast(`Marked PRESENT for ${student.name} (+1 Class Counted)`, 'success');
-        else showToast(`Marked ABSENT for ${student.name} (+1 Class Consumed - Uninformed)`, 'error');
+
+        if (status === 'present') showToast(`Marked PRESENT for ${student.name} (Class Counted)`, 'success');
+        else if (status === 'absent') showToast(`Marked ABSENT for ${student.name} (Class Counted - Uninformed)`, 'error');
+        else showToast(`Marked LEAVE for ${student.name} (Class NOT Deducted)`, 'info');
+
         syncWithCloud();
       };
 
@@ -2021,7 +2151,7 @@
                             </span>
                             <span>•</span>
                             <span style={{ color: '#34D399', fontWeight: 600 }}>
-                              {student.completedClassesCount || 0} completed
+                              {getStudentCompletedClassesCount(student)} completed
                             </span>
                           </div>
 
@@ -2133,9 +2263,16 @@
               const nextDate = student.nextClassDate || calculateNextClassDate(student.weeklyDay || student.classDays || 'Thursday');
               const weeklyDayText = student.weeklyDay ? `Every ${student.weeklyDay}` : (student.classDays || '1 class / week');
               const timingsText = student.classTimings || '4:00 PM IST';
+              const completedCount = getStudentCompletedClassesCount(student);
+
+              const currentCycle = student.packageHistory && student.packageHistory.length > 0
+                ? student.packageHistory[student.packageHistory.length - 1]
+                : null;
+              const currentCycleCompleted = currentCycle ? (currentCycle.classDates?.length || currentCycle.completedCount || 0) : completedCount;
+              const currentCycleLimit = currentCycle ? (currentCycle.limit || student.packageLimit || 4) : (student.packageLimit || 4);
 
               return (
-                <div key={student.id} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div key={student.id} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: 'var(--shadow-sm)' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -2143,33 +2280,54 @@
                           {student.name.slice(0, 2).toUpperCase()}
                         </div>
                         <div>
-                          <h4 style={{ fontSize: '1.1rem', fontWeight: 800 }}>{student.name}</h4>
+                          <h4 onClick={() => onViewProfile(student)} style={{ fontSize: '1.15rem', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline' }}>{student.name}</h4>
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{student.musicClass || 'Lessons'}</div>
                         </div>
                       </div>
                       <span className={`badge badge-${student.feeStatus || 'paid'}`}>{(student.feeStatus || 'paid').toUpperCase()}</span>
                     </div>
 
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                      {/* HIGHLIGHTED CLASS TIMINGS & NEXT CLASS DATE */}
-                      <div style={{ background: 'var(--bg-subtle)', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)', marginBottom: '0.75rem', border: '1px solid var(--border-color)' }}>
-                        <div style={{ color: '#FBBF24', fontWeight: 700, fontSize: '0.9rem' }}>
-                          <i className="fas fa-clock"></i> Timings: {weeklyDayText} at {timingsText}
-                        </div>
-                        <div style={{ color: '#A5B4FC', fontWeight: 700, marginTop: '0.2rem' }}>
-                          <i className="fas fa-calendar-alt"></i> Next Class: {formatReadableDate(nextDate)}
-                        </div>
+                    {/* PROMINENT NEXT CLASS DATE & SCHEDULE BANNER ON STUDENT CARD */}
+                    <div style={{
+                      background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(168, 85, 247, 0.1))',
+                      border: '1.5px solid rgba(129, 140, 248, 0.45)',
+                      borderRadius: '10px',
+                      padding: '0.75rem 1rem',
+                      marginBottom: '0.85rem'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.35rem' }}>
+                        <span style={{ color: '#A5B4FC', fontWeight: 800, fontSize: '0.85rem' }}>
+                          <i className="fas fa-calendar-alt" style={{ color: '#818CF8' }}></i> Next Class Date:
+                        </span>
+                        <span style={{ color: '#38BDF8', fontWeight: 900, fontSize: '1rem', background: 'rgba(15, 23, 42, 0.65)', padding: '0.2rem 0.65rem', borderRadius: '6px', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
+                          📅 {formatReadableDate(nextDate)}
+                        </span>
                       </div>
+                      <div style={{ color: '#FBBF24', fontWeight: 700, fontSize: '0.85rem', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <i className="fas fa-clock"></i> <span>Timings: {weeklyDayText} at {timingsText}</span>
+                      </div>
+                    </div>
 
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.65 }}>
+                      <div><strong>Next Class Date:</strong> <span style={{ color: '#38BDF8', fontWeight: 800 }}>📅 {formatDateMDY(nextDate)} ({formatReadableDate(nextDate)})</span></div>
+                      <div><strong>Regular Schedule:</strong> <span style={{ color: '#FBBF24', fontWeight: 700 }}>{weeklyDayText} at {timingsText}</span></div>
                       {(student.dob || student.age) && (
                         <div style={{ color: '#38BDF8', fontWeight: 600 }}>
-                          <i className="fas fa-birthday-cake"></i> DOB: <strong>{student.dob || 'N/A'}</strong> {student.age ? `(Age: ${student.age} yrs)` : ''}
+                          <i className="fas fa-birthday-cake"></i> DOB: <strong>{formatDateMDY(student.dob)}</strong> {student.age ? `(Age: ${student.age} yrs)` : ''}
                         </div>
                       )}
                       <div><strong>Package:</strong> {formatPackageDisplay(student.packageType, student.packageLimit, student.packageAmount)}</div>
-                      <div><strong>Completed Classes:</strong> <span style={{ color: '#34D399', fontWeight: 800 }}>{student.completedClassesCount || 0}</span></div>
-                      <div><strong>Last Class:</strong> {student.lastClassDate || 'N/A'}</div>
-                      <div><strong>Last Payment:</strong> {student.lastPaymentDate || 'N/A'}</div>
+                      <div>
+                        <strong>Completed Classes:</strong>{' '}
+                        <span style={{ color: '#34D399', fontWeight: 800, fontSize: '0.95rem' }}>
+                          {completedCount} Class{completedCount === 1 ? '' : 'es'}
+                        </span>{' '}
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                          ({currentCycleCompleted}/{currentCycleLimit} in cycle)
+                        </span>
+                      </div>
+                      <div><strong>Last Class:</strong> {formatDateMDY(student.lastClassDate)}</div>
+                      <div><strong>Last Payment:</strong> {formatDateMDY(student.lastPaymentDate)}</div>
                       <div><strong>Phone:</strong> {student.phone || 'N/A'}</div>
                     </div>
                   </div>
@@ -2586,14 +2744,14 @@
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
-                  <div><strong>Date of Birth:</strong> {student.dob || 'Not specified'}</div>
+                  <div><strong>Date of Birth:</strong> {formatDateMDY(student.dob)}</div>
                   <div><strong>Age:</strong> {student.age ? `${student.age} years old` : 'Not specified'}</div>
                   <div><strong>Phone:</strong> {student.phone || 'N/A'}</div>
                   <div><strong>Email:</strong> {student.email || 'N/A'}</div>
                   <div><strong>Package:</strong> {formatPackageDisplay(student.packageType, student.packageLimit, student.packageAmount)}</div>
-                  <div><strong>Total Completed:</strong> <span style={{ color: '#34D399', fontWeight: 800 }}>{student.completedClassesCount || 0} classes</span></div>
-                  <div><strong>Last Class:</strong> {student.lastClassDate || 'N/A'}</div>
-                  <div><strong>Last Payment:</strong> {student.lastPaymentDate || 'N/A'}</div>
+                  <div><strong>Total Completed:</strong> <span style={{ color: '#34D399', fontWeight: 800 }}>{getStudentCompletedClassesCount(student)} classes</span></div>
+                  <div><strong>Last Class:</strong> {formatDateMDY(student.lastClassDate)}</div>
+                  <div><strong>Last Payment:</strong> {formatDateMDY(student.lastPaymentDate)}</div>
                 </div>
               </div>
 
@@ -2603,7 +2761,7 @@
                   <tbody>
                     {classes.map(c => (
                       <tr key={c.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '0.5rem 0.75rem', fontWeight: 700, color: '#A5B4FC' }}>{c.date}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', fontWeight: 700, color: '#A5B4FC' }}>{formatDateMDY(c.date)}</td>
                         <td style={{ padding: '0.5rem 0.75rem', color: '#34D399' }}>{c.status}</td>
                         <td style={{ padding: '0.5rem 0.75rem', color: 'var(--text-muted)' }}>{c.remarks}</td>
                       </tr>
@@ -2858,7 +3016,8 @@
 
       if (selectedStudent) {
         const student = students.find(s => s.id === selectedStudent.id) || selectedStudent;
-        const cycles = student.packageHistory || [];
+        // Show latest cycle at the top (e.g. Cycle #2 above Cycle #1)
+        const cycles = [...(student.packageHistory || [])].sort((a, b) => (Number(b.cycleId) || 0) - (Number(a.cycleId) || 0));
         const nextDate = student.nextClassDate || calculateNextClassDate(student.weeklyDay || 'Thursday');
 
         return (
@@ -2884,7 +3043,7 @@
                     Cycles & Backlog for {student.name}
                   </h3>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    Total: <strong style={{ color: '#34D399' }}>{student.completedClassesCount || 0} Classes</strong> • Timings: <strong>Every {student.weeklyDay || 'Thursday'} at {student.classTimings || '4pm'}</strong> • Next: <strong>{nextDate}</strong>
+                    Total: <strong style={{ color: '#34D399' }}>{getStudentCompletedClassesCount(student)} Classes</strong> • Timings: <strong>Every {student.weeklyDay || 'Thursday'} at {student.classTimings || '4pm'}</strong> • Next: <strong>{formatReadableDate(nextDate)}</strong>
                   </div>
                 </div>
               </div>
@@ -2959,9 +3118,9 @@
                   </div>
 
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: '1rem' }}>
-                    <div><strong>Next Class Date:</strong> <span style={{ color: '#A5B4FC', fontWeight: 700 }}>{formatReadableDate(nextDate)}</span></div>
+                    <div><strong>Next Class Date:</strong> <span style={{ color: '#38BDF8', fontWeight: 800 }}>📅 {formatDateMDY(nextDate)}</span></div>
                     <div><strong>Cycles Logged:</strong> <span style={{ color: '#818CF8', fontWeight: 700 }}>{cyclesCount} Cycles</span></div>
-                    <div><strong>Completed Classes:</strong> <span style={{ color: '#34D399', fontWeight: 700 }}>{student.completedClassesCount || 0} Classes</span></div>
+                    <div><strong>Completed Classes:</strong> <span style={{ color: '#34D399', fontWeight: 700 }}>{getStudentCompletedClassesCount(student)} Classes</span></div>
                   </div>
 
                   <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.85rem', display: 'flex', justifyContent: 'space-between', color: '#818CF8', fontWeight: 700, fontSize: '0.85rem' }}>
@@ -3000,7 +3159,7 @@
                   {isPending ? <span className="badge badge-pending">PENDING PAYMENT</span> : <span className="badge badge-paid">PAID</span>}
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  Fee: ₹{Number(cycle.packageAmount || 6000).toLocaleString('en-IN')} • Dates: {cycle.startDate} to {cycle.endDate}
+                  Fee: ₹{Number(cycle.packageAmount || 6000).toLocaleString('en-IN')} • Dates: {formatDateMDY(cycle.startDate)} to {formatDateMDY(cycle.endDate)}
                 </div>
               </div>
             </div>
@@ -3037,7 +3196,7 @@
                   {classDates.map((dStr, dIdx) => (
                     <div key={dIdx} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', padding: '0.65rem 0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div>
-                        <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#F8FAFC' }}>{dStr}</div>
+                        <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#F8FAFC' }}>{formatDateMDY(dStr)}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Class #{dIdx + 1} • 45m IST</div>
                       </div>
                       <button onClick={() => onDeleteClassDate(dStr)} style={{ color: '#F87171', background: 'none' }} title="Delete"><i className="fas fa-trash"></i></button>
@@ -3098,7 +3257,7 @@
                   <tbody>
                     {studentPayments.map(p => (
                       <tr key={p.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '0.85rem 1.25rem', fontWeight: 800, color: '#A5B4FC' }}>{p.paymentDate}</td>
+                        <td style={{ padding: '0.85rem 1.25rem', fontWeight: 800, color: '#A5B4FC' }}>{formatDateMDY(p.paymentDate)}</td>
                         <td style={{ padding: '0.85rem 1.25rem', fontWeight: 800, color: '#34D399' }}>₹{Number(p.amount || 0).toLocaleString('en-IN')}</td>
                         <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-muted)' }}>{formatPackageDisplay(p.packageType, p.limit, p.amount)}</td>
                         <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-muted)' }}>{p.paymentMethod || 'UPI'}</td>
@@ -3156,7 +3315,7 @@
                   </div>
 
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: '1rem' }}>
-                    <div><strong>Last Payment Date:</strong> <span style={{ color: '#A5B4FC', fontWeight: 700 }}>{student.lastPaymentDate || 'N/A'}</span></div>
+                    <div><strong>Last Payment Date:</strong> <span style={{ color: '#A5B4FC', fontWeight: 700 }}>{formatDateMDY(student.lastPaymentDate)}</span></div>
                     <div><strong>Total Paid to Date:</strong> <span style={{ color: '#34D399', fontWeight: 800 }}>₹{totalAmount.toLocaleString('en-IN')}</span> ({studentPayments.length} payments)</div>
                   </div>
 
