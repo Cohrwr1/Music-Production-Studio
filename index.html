@@ -649,17 +649,59 @@
         setTimeout(() => setToast(null), 4000);
       };
 
-      // Persistence
-      useEffect(() => { localStorage.setItem('studio_students_v5', JSON.stringify(students)); }, [students]);
-      useEffect(() => { localStorage.setItem('studio_teachers_v5', JSON.stringify(teachers)); }, [teachers]);
-      useEffect(() => { localStorage.setItem('studio_classes_v5', JSON.stringify(classesHistory)); }, [classesHistory]);
-      useEffect(() => { localStorage.setItem('studio_payments_v5', JSON.stringify(payments)); }, [payments]);
-      useEffect(() => { localStorage.setItem('studio_attendance_map_v5', JSON.stringify(attendanceMap)); }, [attendanceMap]);
-      useEffect(() => { localStorage.setItem('studio_rescheduled_v5', JSON.stringify(rescheduledClasses)); }, [rescheduledClasses]);
-      useEffect(() => { localStorage.setItem('studio_sheet_url_v5', sheetUrl); }, [sheetUrl]);
+      // Bulletproof Two-Tier Persistence (v7 & v5 fallback)
       useEffect(() => {
-        if (currentTeacher) localStorage.setItem('studio_active_teacher_v5', JSON.stringify(currentTeacher));
-        else localStorage.removeItem('studio_active_teacher_v5');
+        try {
+          localStorage.setItem('studio_v7_students', JSON.stringify(students));
+          localStorage.setItem('studio_students_v5', JSON.stringify(students));
+        } catch(e){}
+      }, [students]);
+      useEffect(() => {
+        try {
+          localStorage.setItem('studio_v7_teachers', JSON.stringify(teachers));
+          localStorage.setItem('studio_teachers_v5', JSON.stringify(teachers));
+        } catch(e){}
+      }, [teachers]);
+      useEffect(() => {
+        try {
+          localStorage.setItem('studio_v7_classes', JSON.stringify(classesHistory));
+          localStorage.setItem('studio_classes_v5', JSON.stringify(classesHistory));
+        } catch(e){}
+      }, [classesHistory]);
+      useEffect(() => {
+        try {
+          localStorage.setItem('studio_v7_payments', JSON.stringify(payments));
+          localStorage.setItem('studio_payments_v5', JSON.stringify(payments));
+        } catch(e){}
+      }, [payments]);
+      useEffect(() => {
+        try {
+          localStorage.setItem('studio_v7_attendance_map', JSON.stringify(attendanceMap));
+          localStorage.setItem('studio_attendance_map_v5', JSON.stringify(attendanceMap));
+        } catch(e){}
+      }, [attendanceMap]);
+      useEffect(() => {
+        try {
+          localStorage.setItem('studio_v7_rescheduled', JSON.stringify(rescheduledClasses));
+          localStorage.setItem('studio_rescheduled_v5', JSON.stringify(rescheduledClasses));
+        } catch(e){}
+      }, [rescheduledClasses]);
+      useEffect(() => {
+        try {
+          localStorage.setItem('studio_sheet_url_v5', sheetUrl);
+          localStorage.setItem('studio_v7_sheet_url', sheetUrl);
+        } catch(e){}
+      }, [sheetUrl]);
+      useEffect(() => {
+        try {
+          if (currentTeacher) {
+            localStorage.setItem('studio_active_teacher_v5', JSON.stringify(currentTeacher));
+            localStorage.setItem('studio_v7_active_teacher', JSON.stringify(currentTeacher));
+          } else {
+            localStorage.removeItem('studio_active_teacher_v5');
+            localStorage.removeItem('studio_v7_active_teacher');
+          }
+        } catch(e){}
       }, [currentTeacher]);
 
       // Helper: Apply incoming cloud data to React state & localStorage
@@ -720,6 +762,7 @@
                 if (cloudTime > lastLocalSaveTime) {
                   applyIncomingCloudData(json);
                   setLastLocalSaveTime(cloudTime);
+                  try { localStorage.setItem('studio_v7_last_save', String(cloudTime)); } catch(e){}
                   setSyncStatus('synced');
                 }
               }
@@ -754,7 +797,7 @@
         const currentRescheduled = overrideData.rescheduledClasses || rescheduledClasses;
         const currentSheetUrl = overrideData.sheetUrl || sheetUrl;
 
-        // 1. Instant local persistence (offline resilient)
+        // 1. Instant local persistence (offline resilient, both v7 & v5 keys)
         try {
           localStorage.setItem('studio_v7_teachers', JSON.stringify(currentTeachers));
           localStorage.setItem('studio_v7_students', JSON.stringify(currentStudents));
@@ -762,6 +805,12 @@
           localStorage.setItem('studio_v7_classes', JSON.stringify(currentClasses));
           localStorage.setItem('studio_v7_attendance_map', JSON.stringify(currentAttendance));
           localStorage.setItem('studio_v7_rescheduled', JSON.stringify(currentRescheduled));
+          localStorage.setItem('studio_teachers_v5', JSON.stringify(currentTeachers));
+          localStorage.setItem('studio_students_v5', JSON.stringify(currentStudents));
+          localStorage.setItem('studio_payments_v5', JSON.stringify(currentPayments));
+          localStorage.setItem('studio_classes_v5', JSON.stringify(currentClasses));
+          localStorage.setItem('studio_attendance_map_v5', JSON.stringify(currentAttendance));
+          localStorage.setItem('studio_rescheduled_v5', JSON.stringify(currentRescheduled));
         } catch (e) {
           console.warn('LocalStorage save error:', e);
         }
@@ -833,10 +882,10 @@
         const istTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }) + ' IST';
         const isCounted = (status === 'present' || status === 'absent');
 
-        setAttendanceMap(prev => ({
-          ...prev,
+        const newAttendanceMap = {
+          ...attendanceMap,
           [selectedDate]: {
-            ...(prev[selectedDate] || {}),
+            ...(attendanceMap[selectedDate] || {}),
             [studentId]: {
               status,
               time: istTime,
@@ -845,7 +894,8 @@
               updatedAt: Date.now()
             }
           }
-        }));
+        };
+        setAttendanceMap(newAttendanceMap);
 
         const statusLabel = status === 'present' 
           ? 'Present (Class Counted)' 
@@ -854,24 +904,23 @@
             : `Leave - Informed (Class NOT Deducted${leaveReason ? ' - ' + leaveReason : ''})`;
 
         // Deduplicated classesHistory: at most 1 entry per student per date
-        setClassesHistory(prev => {
-          const filtered = prev.filter(c => !(c.studentId === studentId && c.date === selectedDate));
-          return [
-            {
-              id: 'cls_' + studentId + '_' + selectedDate,
-              studentId,
-              studentName: student.name,
-              teacherId: student.teacherId || 'gaurav',
-              teacherName: student.teacherName || 'Gaurav',
-              date: selectedDate,
-              time: (student.classTimings || '45 mins') + ' IST',
-              classNumber: (student.completedClassesCount || 0) + (isCounted && !currentDayRecord?.isCounted ? 1 : 0),
-              status: statusLabel,
-              remarks: leaveReason || (status === 'present' ? 'Attended 45-min music session' : 'Absent without prior notice')
-            },
-            ...filtered
-          ];
-        });
+        const filteredClasses = classesHistory.filter(c => !(c.studentId === studentId && c.date === selectedDate));
+        const newClassesHistory = [
+          {
+            id: 'cls_' + studentId + '_' + selectedDate,
+            studentId,
+            studentName: student.name,
+            teacherId: student.teacherId || 'gaurav',
+            teacherName: student.teacherName || 'Gaurav',
+            date: selectedDate,
+            time: (student.classTimings || '45 mins') + ' IST',
+            classNumber: (student.completedClassesCount || 0) + (isCounted && !currentDayRecord?.isCounted ? 1 : 0),
+            status: statusLabel,
+            remarks: leaveReason || (status === 'present' ? 'Attended 45-min music session' : 'Absent without prior notice')
+          },
+          ...filteredClasses
+        ];
+        setClassesHistory(newClassesHistory);
 
         // Advance Next Class Date when marked Present/Absent
         const autoNextDate = isCounted 
@@ -910,11 +959,12 @@
 
                 // ONLY add date if it is not already recorded!
                 if (!dateAlreadyExists) {
-                  let latestPkg = pkgs[pkgs.length - 1];
+                  let latestPkg = pkgs.reduce((prev, curr) => (Number(curr.cycleId) > Number(prev.cycleId) ? curr : prev), pkgs[pkgs.length - 1]);
+                  let latestIdx = pkgs.findIndex(p => p.cycleId === latestPkg.cycleId);
                   let dates = latestPkg.classDates ? [...latestPkg.classDates] : [];
 
                   if (dates.length >= latestPkg.limit) {
-                    const nextCycleId = pkgs.length + 1;
+                    const nextCycleId = Math.max(...pkgs.map(p => Number(p.cycleId) || 0), 0) + 1;
                     pkgs.push({
                       cycleId: nextCycleId,
                       packageType: s.packageType || `${currentLimit} Classes Package`,
@@ -935,7 +985,7 @@
                     latestPkg.classDates = dates;
                     latestPkg.completedCount = dates.length;
                     latestPkg.endDate = dates[dates.length - 1];
-                    pkgs[pkgs.length - 1] = latestPkg;
+                    pkgs[latestIdx] = latestPkg;
                   }
                 }
               } else {
@@ -960,7 +1010,7 @@
               return acc + (Number(p.completedCount) || 0);
             }, 0);
 
-            const activeCycle = pkgs[pkgs.length - 1];
+            const activeCycle = pkgs.reduce((prev, curr) => (Number(curr.cycleId) > Number(prev.cycleId) ? curr : prev), pkgs[pkgs.length - 1]);
             const currentCycleCount = activeCycle ? (activeCycle.classDates?.length || activeCycle.completedCount || 0) : 0;
 
             return {
@@ -982,7 +1032,11 @@
         else if (status === 'absent') showToast(`Marked ABSENT for ${student.name} (Class Counted - Uninformed)`, 'error');
         else showToast(`Marked LEAVE for ${student.name} (Class NOT Deducted)`, 'info');
 
-        syncWithCloud();
+        syncWithCloud({
+          students: updatedStudents,
+          attendanceMap: newAttendanceMap,
+          classes: newClassesHistory
+        });
       };
 
       // Reschedule
@@ -1001,10 +1055,11 @@
           createdAt: new Date().toISOString()
         };
 
-        setRescheduledClasses([newRecord, ...rescheduledClasses]);
+        const updatedRescheduled = [newRecord, ...rescheduledClasses];
+        setRescheduledClasses(updatedRescheduled);
 
         // Update student's nextClassDate to the rescheduled date!
-        setStudents(students.map(s => {
+        const updatedStudents = students.map(s => {
           if (s.id === rescheduleData.studentId) {
             return {
               ...s,
@@ -1013,11 +1068,12 @@
             };
           }
           return s;
-        }));
+        });
+        setStudents(updatedStudents);
 
         setIsRescheduleOpen(false);
         showToast(`Class for ${student?.name} rescheduled to ${rescheduleData.rescheduledDate} at ${rescheduleData.rescheduledTime}!`, 'success');
-        syncWithCloud();
+        syncWithCloud({ students: updatedStudents, rescheduledClasses: updatedRescheduled });
       };
 
       // Extra Class
@@ -1036,10 +1092,11 @@
           remarks: extraData.remarks || 'Extra class scheduled with teacher'
         };
 
-        setClassesHistory([newClass, ...classesHistory]);
+        const updatedClasses = [newClass, ...classesHistory];
+        setClassesHistory(updatedClasses);
         setIsExtraClassOpen(false);
         showToast(`Extra class scheduled for ${student?.name} on ${extraData.date}!`, 'success');
-        syncWithCloud();
+        syncWithCloud({ classes: updatedClasses });
       };
 
       // Mark Cycle as Paid
@@ -1047,7 +1104,7 @@
         if (!markPaidTarget) return;
         const { student, cycle } = markPaidTarget;
 
-        setStudents(students.map(s => {
+        const updatedStudents = students.map(s => {
           if (s.id === student.id && s.packageHistory) {
             const pkgs = s.packageHistory.map(p => {
               if (p.cycleId === cycle.cycleId) {
@@ -1063,9 +1120,10 @@
             };
           }
           return s;
-        }));
+        });
+        setStudents(updatedStudents);
 
-        setPayments([
+        const updatedPayments = [
           {
             id: 'pay_' + Date.now(),
             studentId: student.id,
@@ -1079,31 +1137,38 @@
             remarks: remarks || `Payment cleared for Cycle #${cycle.cycleId}`
           },
           ...payments
-        ]);
+        ];
+        setPayments(updatedPayments);
 
         setIsMarkPaidModalOpen(false);
         setMarkPaidTarget(null);
         showToast(`Cycle #${cycle.cycleId} marked as PAID on ${paymentDate}!`, 'success');
-        syncWithCloud();
+        syncWithCloud({ students: updatedStudents, payments: updatedPayments });
       };
 
       // Edit / Add Payment
       const handleSavePaymentEdit = (paymentData) => {
+        let updatedPayments = [];
+        let updatedStudents = students;
         if (editingPayment) {
-          setPayments(payments.map(p => p.id === editingPayment.id ? { ...p, ...paymentData } : p));
-          setStudents(students.map(s => s.id === paymentData.studentId ? { ...s, lastPaymentDate: paymentData.paymentDate } : s));
+          updatedPayments = payments.map(p => p.id === editingPayment.id ? { ...p, ...paymentData } : p);
+          setPayments(updatedPayments);
+          updatedStudents = students.map(s => s.id === paymentData.studentId ? { ...s, lastPaymentDate: paymentData.paymentDate } : s);
+          setStudents(updatedStudents);
           showToast('Payment record updated!', 'success');
         } else {
-          setPayments([
+          updatedPayments = [
             { ...paymentData, id: 'pay_' + Date.now(), status: 'Completed' },
             ...payments
-          ]);
-          setStudents(students.map(s => s.id === paymentData.studentId ? { ...s, feeStatus: 'paid', lastPaymentDate: paymentData.paymentDate } : s));
+          ];
+          setPayments(updatedPayments);
+          updatedStudents = students.map(s => s.id === paymentData.studentId ? { ...s, feeStatus: 'paid', lastPaymentDate: paymentData.paymentDate } : s);
+          setStudents(updatedStudents);
           showToast('Payment recorded!', 'success');
         }
         setIsRecordPaymentOpen(false);
         setEditingPayment(null);
-        syncWithCloud();
+        syncWithCloud({ students: updatedStudents, payments: updatedPayments });
       };
 
       // Add Cycle
@@ -1126,7 +1191,7 @@
           classDates: []
         });
 
-        setStudents(students.map(s => s.id === student.id ? {
+        const updatedStudents = students.map(s => s.id === student.id ? {
           ...s,
           packageType: cycleData.packageType,
           packageAmount: Number(cycleData.packageAmount) || 6000,
@@ -1134,17 +1199,18 @@
           feeStatus: cycleData.feeStatus || s.feeStatus,
           currentCycleCompleted: 0,
           packageHistory: pkgs
-        } : s));
+        } : s);
+        setStudents(updatedStudents);
 
         setIsAddCycleModalOpen(false);
         setCycleTargetStudent(null);
         showToast(`Cycle #${nextCycleNum} added for ${student.name}!`, 'success');
-        syncWithCloud();
+        syncWithCloud({ students: updatedStudents });
       };
 
       // Edit Cycle Details (StartDate, EndDate, Limit, Amount, Status)
       const handleSaveEditCycle = (cycleData) => {
-        setStudents(students.map(s => {
+        const updatedStudents = students.map(s => {
           if (s.id === cycleData.studentId && s.packageHistory) {
             const pkgs = s.packageHistory.map(p => {
               if (p.cycleId === cycleData.cycleId) {
@@ -1173,11 +1239,12 @@
             };
           }
           return s;
-        }));
+        });
+        setStudents(updatedStudents);
         setIsEditCycleModalOpen(false);
         setEditingCycleTarget(null);
         showToast(`Cycle #${cycleData.cycleId} updated successfully!`, 'success');
-        syncWithCloud();
+        syncWithCloud({ students: updatedStudents });
       };
 
       // Delete Cycle
@@ -1185,7 +1252,7 @@
         const student = students.find(s => s.id === studentId);
         if (!student) return;
         if (confirm(`Delete Cycle #${cycleId} for ${student.name}? All class sessions inside Cycle #${cycleId} will be removed.`)) {
-          setStudents(students.map(s => {
+          const updatedStudents = students.map(s => {
             if (s.id === studentId && s.packageHistory) {
               let pkgs = s.packageHistory.filter(p => p.cycleId !== cycleId);
               pkgs = pkgs.map((p, idx) => ({ ...p, cycleId: idx + 1 }));
@@ -1202,9 +1269,10 @@
               };
             }
             return s;
-          }));
+          });
+          setStudents(updatedStudents);
           showToast(`Cycle #${cycleId} deleted.`, 'info');
-          syncWithCloud();
+          syncWithCloud({ students: updatedStudents });
         }
       };
 
@@ -1241,26 +1309,28 @@
 
         const totalCompleted = pkgs.reduce((acc, p) => acc + (p.classDates ? p.classDates.length : (p.completedCount || 0)), 0);
 
-        setStudents(students.map(s => s.id === student.id ? {
+        const updatedStudents = students.map(s => s.id === student.id ? {
           ...s,
           completedClassesCount: totalCompleted,
           lastClassDate: dateData.date > (s.lastClassDate || '') ? dateData.date : s.lastClassDate,
           packageHistory: pkgs
-        } : s));
+        } : s);
+        setStudents(updatedStudents);
 
         setIsAddCycleClassDateOpen(false);
         setCycleClassTarget(null);
         showToast(`${countToAdd > 1 ? countToAdd + ' classes' : 'Class session'} on ${formatDateMDY(dateData.date)} added to Cycle #${dateData.cycleId}!`, 'success');
-        syncWithCloud();
+        syncWithCloud({ students: updatedStudents });
       };
 
       // Save Student
       const handleSaveStudent = (data) => {
         // Compute Next Class Date automatically if not provided
         const computedNext = data.nextClassDate || calculateNextClassDate(data.weeklyDay || 'Thursday');
+        let updatedStudents;
 
         if (editingStudent) {
-          setStudents(students.map(s => {
+          updatedStudents = students.map(s => {
             if (s.id === editingStudent.id) {
               let updatedHistory = s.packageHistory ? [...s.packageHistory] : [];
               if (updatedHistory.length > 0) {
@@ -1281,7 +1351,8 @@
               };
             }
             return s;
-          }));
+          });
+          setStudents(updatedStudents);
           showToast(`Student ${data.name} updated!`, 'success');
         } else {
           const newId = 'std_' + Date.now();
@@ -1296,18 +1367,19 @@
             feeStatus: data.feeStatus || 'paid',
             classDates: data.lastClassDate ? [data.lastClassDate] : []
           };
-          setStudents([...students, {
+          updatedStudents = [...students, {
             ...data,
             id: newId,
             nextClassDate: computedNext,
             packageHistory: [newPkg],
             avatarColor: data.avatarColor || '#6366F1'
-          }]);
+          }];
+          setStudents(updatedStudents);
           showToast(`Student ${data.name} registered!`, 'success');
         }
         setIsAddStudentOpen(false);
         setEditingStudent(null);
-        syncWithCloud();
+        syncWithCloud({ students: updatedStudents });
       };
 
       // Full Studio Database Export
@@ -1721,9 +1793,10 @@
                 onDeleteStudent={(stdId) => {
                   const s = students.find(x => x.id === stdId);
                   if (confirm(`Remove student "${s?.name}"?`)) {
-                    setStudents(students.filter(x => x.id !== stdId));
+                    const updated = students.filter(x => x.id !== stdId);
+                    setStudents(updated);
                     showToast('Student removed.', 'info');
-                    syncWithCloud();
+                    syncWithCloud({ students: updated });
                   }
                 }}
                 onViewProfile={(std) => setProfileViewingStudent(std)}
@@ -1739,7 +1812,7 @@
                 onDeleteCycle={(stdId, cId) => handleDeleteCycle(stdId, cId)}
                 onDeleteClassDate={(stdId, cId, dateIdx, dateToRemove) => {
                   if (confirm(`Delete class session on ${formatDateMDY(dateToRemove)} from Cycle #${cId}?`)) {
-                    setStudents(students.map(s => {
+                    const updated = students.map(s => {
                       if (s.id === stdId && s.packageHistory) {
                         const pkgs = s.packageHistory.map(p => {
                           if (p.cycleId === cId && p.classDates) {
@@ -1763,9 +1836,10 @@
                         return { ...s, completedClassesCount: total, packageHistory: pkgs };
                       }
                       return s;
-                    }));
+                    });
+                    setStudents(updated);
                     showToast('Class session removed.', 'info');
-                    syncWithCloud();
+                    syncWithCloud({ students: updated });
                   }
                 }}
                 onMarkPaidClick={(std, cycle) => {
@@ -1791,9 +1865,10 @@
                 }}
                 onDeletePayment={(payId) => {
                   if (confirm('Delete this payment record?')) {
-                    setPayments(payments.filter(p => p.id !== payId));
+                    const updated = payments.filter(p => p.id !== payId);
+                    setPayments(updated);
                     showToast('Payment record deleted.', 'info');
-                    syncWithCloud();
+                    syncWithCloud({ payments: updated });
                   }
                 }}
               />
