@@ -584,6 +584,16 @@
         }
       });
 
+      const [extraClasses, setExtraClasses] = useState(() => {
+        try {
+          const saved = localStorage.getItem('studio_v7_extra_classes');
+          return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+          return [];
+        }
+      });
+      const [extraClassTargetStudent, setExtraClassTargetStudent] = useState(null);
+
       const [cloudDbUrl, setCloudDbUrl] = useState(() => {
         return localStorage.getItem('studio_v7_cloud_db_url') || DEFAULT_FIREBASE_URL;
       });
@@ -688,6 +698,12 @@
       }, [rescheduledClasses]);
       useEffect(() => {
         try {
+          localStorage.setItem('studio_v7_extra_classes', JSON.stringify(extraClasses));
+          localStorage.setItem('studio_extra_classes_v5', JSON.stringify(extraClasses));
+        } catch(e){}
+      }, [extraClasses]);
+      useEffect(() => {
+        try {
           localStorage.setItem('studio_sheet_url_v5', sheetUrl);
           localStorage.setItem('studio_v7_sheet_url', sheetUrl);
         } catch(e){}
@@ -737,6 +753,10 @@
         if (Array.isArray(d.rescheduledClasses)) {
           setRescheduledClasses(d.rescheduledClasses);
           localStorage.setItem('studio_v7_rescheduled', JSON.stringify(d.rescheduledClasses));
+        }
+        if (Array.isArray(d.extraClasses)) {
+          setExtraClasses(d.extraClasses);
+          localStorage.setItem('studio_v7_extra_classes', JSON.stringify(d.extraClasses));
         }
         if (d.updatedAt) {
           setLastSyncTime(d.updatedAt);
@@ -795,6 +815,7 @@
         const currentClasses = overrideData.classes || classesHistory;
         const currentAttendance = overrideData.attendanceMap || attendanceMap;
         const currentRescheduled = overrideData.rescheduledClasses || rescheduledClasses;
+        const currentExtraClasses = overrideData.extraClasses || extraClasses;
         const currentSheetUrl = overrideData.sheetUrl || sheetUrl;
 
         // 1. Instant local persistence (offline resilient, both v7 & v5 keys)
@@ -805,6 +826,8 @@
           localStorage.setItem('studio_v7_classes', JSON.stringify(currentClasses));
           localStorage.setItem('studio_v7_attendance_map', JSON.stringify(currentAttendance));
           localStorage.setItem('studio_v7_rescheduled', JSON.stringify(currentRescheduled));
+          localStorage.setItem('studio_v7_extra_classes', JSON.stringify(currentExtraClasses));
+          localStorage.setItem('studio_extra_classes_v5', JSON.stringify(currentExtraClasses));
           localStorage.setItem('studio_teachers_v5', JSON.stringify(currentTeachers));
           localStorage.setItem('studio_students_v5', JSON.stringify(currentStudents));
           localStorage.setItem('studio_payments_v5', JSON.stringify(currentPayments));
@@ -824,6 +847,7 @@
           classes: currentClasses,
           attendanceMap: currentAttendance,
           rescheduledClasses: currentRescheduled,
+          extraClasses: currentExtraClasses,
           sheetUrl: currentSheetUrl
         };
 
@@ -1028,6 +1052,18 @@
 
         setStudents(updatedStudents);
 
+        // If this attendance marks a rescheduled session, complete that reschedule record
+        let updatedRescheduled = rescheduledClasses;
+        if ((rescheduledClasses || []).some(r => r.studentId === studentId && r.rescheduledDate === selectedDate && r.status !== 'completed')) {
+          updatedRescheduled = rescheduledClasses.map(r => {
+            if (r.studentId === studentId && r.rescheduledDate === selectedDate) {
+              return { ...r, status: 'completed', completedAt: Date.now() };
+            }
+            return r;
+          });
+          setRescheduledClasses(updatedRescheduled);
+        }
+
         if (status === 'present') showToast(`Marked PRESENT for ${student.name} (Class Counted)`, 'success');
         else if (status === 'absent') showToast(`Marked ABSENT for ${student.name} (Class Counted - Uninformed)`, 'error');
         else showToast(`Marked LEAVE for ${student.name} (Class NOT Deducted)`, 'info');
@@ -1035,68 +1071,231 @@
         syncWithCloud({
           students: updatedStudents,
           attendanceMap: newAttendanceMap,
-          classes: newClassesHistory
+          classes: newClassesHistory,
+          rescheduledClasses: updatedRescheduled
         });
       };
 
-      // Reschedule
+      // Reschedule - Bulletproof Implementation: Removes class from previous date, adds to new date, preserves regular timings
       const handleSaveReschedule = (rescheduleData) => {
         const student = students.find(s => s.id === rescheduleData.studentId);
+        if (!student) {
+          showToast('Student not found.', 'error');
+          return;
+        }
+
+        const origDate = rescheduleData.originalDate;
+        const newDate = rescheduleData.rescheduledDate;
+        const newTime = rescheduleData.rescheduledTime || '02:00 PM IST';
+        const origTime = rescheduleData.originalTime || student.classTimings || '04:00 PM IST';
+        const reschedReason = rescheduleData.reason || 'Student requested reschedule';
+
         const newRecord = {
           id: 'resched_' + Date.now(),
-          studentId: rescheduleData.studentId,
-          studentName: student ? student.name : 'Student',
+          studentId: student.id,
+          studentName: student.name,
           teacherId: currentTeacher?.id || 'gaurav',
-          originalDate: rescheduleData.originalDate,
-          originalTime: rescheduleData.originalTime,
-          rescheduledDate: rescheduleData.rescheduledDate,
-          rescheduledTime: rescheduleData.rescheduledTime,
-          reason: rescheduleData.reason,
+          originalDate: origDate,
+          originalTime: origTime,
+          rescheduledDate: newDate,
+          rescheduledTime: newTime,
+          reason: reschedReason,
+          status: 'pending',
           createdAt: new Date().toISOString()
         };
 
-        const updatedRescheduled = [newRecord, ...rescheduledClasses];
+        // Filter out any older pending reschedule for the same student on this originalDate
+        const filteredRescheduled = (rescheduledClasses || []).filter(
+          r => !(r.studentId === student.id && r.originalDate === origDate && r.status !== 'completed')
+        );
+        const updatedRescheduled = [newRecord, ...filteredRescheduled];
         setRescheduledClasses(updatedRescheduled);
 
-        // Update student's nextClassDate to the rescheduled date!
+        // Update student's nextClassDate to the new rescheduled date, preserving recurring classTimings
         const updatedStudents = students.map(s => {
-          if (s.id === rescheduleData.studentId) {
+          if (s.id === student.id) {
             return {
               ...s,
-              nextClassDate: rescheduleData.rescheduledDate,
-              classTimings: rescheduleData.rescheduledTime
+              nextClassDate: newDate,
+              rescheduledClass: {
+                originalDate: origDate,
+                rescheduledDate: newDate,
+                rescheduledTime: newTime,
+                reason: reschedReason
+              }
             };
           }
           return s;
         });
         setStudents(updatedStudents);
 
+        // Clean up any pending attendance record on the original date since class was moved away!
+        let updatedAttendanceMap = { ...attendanceMap };
+        if (updatedAttendanceMap[origDate]?.[student.id]) {
+          const dayRecordsCopy = { ...updatedAttendanceMap[origDate] };
+          delete dayRecordsCopy[student.id];
+          updatedAttendanceMap[origDate] = dayRecordsCopy;
+          setAttendanceMap(updatedAttendanceMap);
+        }
+
         setIsRescheduleOpen(false);
-        showToast(`Class for ${student?.name} rescheduled to ${rescheduleData.rescheduledDate} at ${rescheduleData.rescheduledTime}!`, 'success');
-        syncWithCloud({ students: updatedStudents, rescheduledClasses: updatedRescheduled });
+        showToast(`Class for ${student.name} rescheduled from ${formatDateMDY(origDate)} to ${formatDateMDY(newDate)} at ${newTime}!`, 'success');
+        syncWithCloud({
+          students: updatedStudents,
+          rescheduledClasses: updatedRescheduled,
+          attendanceMap: updatedAttendanceMap
+        });
       };
 
-      // Extra Class
+      // Extra Class - Bulletproof Implementation: Adds to Cycle, Increments Completed Count, Logs Attendance & History
       const handleSaveExtraClass = (extraData) => {
         const student = students.find(s => s.id === extraData.studentId);
+        if (!student) {
+          showToast('Student not found.', 'error');
+          return;
+        }
+
+        const sessionDate = extraData.date || getLocalDateString();
+        const sessionTime = extraData.time || '06:00 PM IST';
+        const sessionRemarks = extraData.remarks || 'Extra class session (counted)';
+
+        // 1. Add extra class to active package cycle classDates and advance completedClassesCount
+        let pkgs = student.packageHistory ? JSON.parse(JSON.stringify(student.packageHistory)) : [];
+        let currentLimit = student.packageLimit || 4;
+        let feeStatus = student.feeStatus || 'paid';
+
+        if (pkgs.length === 0) {
+          pkgs.push({
+            cycleId: 1,
+            packageType: student.packageType || `${currentLimit} Classes Package`,
+            packageAmount: student.packageAmount || 6000,
+            limit: currentLimit,
+            completedCount: 1,
+            startDate: sessionDate,
+            endDate: sessionDate,
+            feeStatus: 'paid',
+            classDates: [sessionDate],
+            remarks: 'Cycle 1 (Started with Extra Class)'
+          });
+        } else {
+          // Find the active/latest cycle by maximum cycleId
+          let latestPkg = pkgs.reduce((prev, curr) => (Number(curr.cycleId) > Number(prev.cycleId) ? curr : prev), pkgs[pkgs.length - 1]);
+          let latestIdx = pkgs.findIndex(p => p.cycleId === latestPkg.cycleId);
+          let dates = latestPkg.classDates ? [...latestPkg.classDates] : [];
+
+          // If current cycle limit reached, auto-start next cycle
+          if (dates.length >= latestPkg.limit) {
+            const nextCycleId = Math.max(...pkgs.map(p => Number(p.cycleId) || 0), 0) + 1;
+            pkgs.push({
+              cycleId: nextCycleId,
+              packageType: student.packageType || `${currentLimit} Classes Package`,
+              packageAmount: student.packageAmount || (currentLimit === 12 ? 15000 : 6000),
+              limit: currentLimit,
+              completedCount: 1,
+              startDate: sessionDate,
+              endDate: sessionDate,
+              feeStatus: 'pending',
+              remarks: `Cycle ${nextCycleId} auto-started with Extra Class. Payment Pending.`,
+              classDates: [sessionDate]
+            });
+            feeStatus = 'pending';
+            showToast(`Cycle #${nextCycleId} started for ${student.name} with Status: PENDING PAYMENT`, 'error');
+          } else {
+            dates.push(sessionDate);
+            dates.sort();
+            latestPkg.classDates = dates;
+            latestPkg.completedCount = dates.length;
+            latestPkg.endDate = dates[dates.length - 1];
+            pkgs[latestIdx] = latestPkg;
+          }
+        }
+
+        // True completed classes calculated directly from cycle classDates
+        const trueTotalCompleted = pkgs.reduce((acc, p) => {
+          if (p.classDates && Array.isArray(p.classDates)) {
+            return acc + p.classDates.length;
+          }
+          return acc + (Number(p.completedCount) || 0);
+        }, 0);
+
+        const activeCycle = pkgs.reduce((prev, curr) => (Number(curr.cycleId) > Number(prev.cycleId) ? curr : prev), pkgs[pkgs.length - 1]);
+        const currentCycleCount = activeCycle ? (activeCycle.classDates?.length || activeCycle.completedCount || 0) : 0;
+
+        const updatedStudents = students.map(s => {
+          if (s.id === student.id) {
+            return {
+              ...s,
+              completedClassesCount: trueTotalCompleted,
+              currentCycleCompleted: currentCycleCount,
+              lastClassDate: sessionDate > (s.lastClassDate || '') ? sessionDate : s.lastClassDate,
+              feeStatus,
+              packageHistory: pkgs
+            };
+          }
+          return s;
+        });
+        setStudents(updatedStudents);
+
+        // 2. Mark Attendance as Present on sessionDate
+        const updatedAttendanceMap = {
+          ...attendanceMap,
+          [sessionDate]: {
+            ...(attendanceMap[sessionDate] || {}),
+            [student.id]: {
+              status: 'present',
+              time: sessionTime,
+              isCounted: true,
+              isExtraClass: true,
+              reason: sessionRemarks,
+              updatedAt: Date.now()
+            }
+          }
+        };
+        setAttendanceMap(updatedAttendanceMap);
+
+        // 3. Log in Classes History
         const newClass = {
-          id: 'cls_extra_' + Date.now(),
-          studentId: extraData.studentId,
-          studentName: student ? student.name : 'Student',
+          id: 'cls_extra_' + student.id + '_' + Date.now(),
+          studentId: student.id,
+          studentName: student.name,
           teacherId: currentTeacher?.id || 'gaurav',
           teacherName: currentTeacher?.name || 'Gaurav',
-          date: extraData.date,
-          time: extraData.time + ' (Extra Session 45 mins IST)',
-          classNumber: (student?.completedClassesCount || 0) + 1,
-          status: 'Scheduled Extra Class',
-          remarks: extraData.remarks || 'Extra class scheduled with teacher'
+          date: sessionDate,
+          time: sessionTime + ' (Extra Session 45 mins IST)',
+          classNumber: trueTotalCompleted,
+          status: 'Present (Extra Class Counted)',
+          remarks: sessionRemarks
         };
-
-        const updatedClasses = [newClass, ...classesHistory];
+        const updatedClasses = [
+          newClass,
+          ...classesHistory.filter(c => !(c.studentId === student.id && c.date === sessionDate && c.id === newClass.id))
+        ];
         setClassesHistory(updatedClasses);
+
+        // 4. Update extraClasses collection
+        const newExtraRecord = {
+          id: 'extra_' + Date.now(),
+          studentId: student.id,
+          studentName: student.name,
+          date: sessionDate,
+          time: sessionTime,
+          remarks: sessionRemarks,
+          createdAt: Date.now()
+        };
+        const updatedExtraClasses = [newExtraRecord, ...(extraClasses || [])];
+        setExtraClasses(updatedExtraClasses);
+
         setIsExtraClassOpen(false);
-        showToast(`Extra class scheduled for ${student?.name} on ${extraData.date}!`, 'success');
-        syncWithCloud({ classes: updatedClasses });
+        setExtraClassTargetStudent(null);
+        showToast(`Extra class recorded for ${student.name} on ${formatDateMDY(sessionDate)}! Completed: ${currentCycleCount}/${activeCycle?.limit || 4} classes.`, 'success');
+
+        // 5. Cloud & Local Persistence Sync
+        syncWithCloud({
+          students: updatedStudents,
+          classes: updatedClasses,
+          attendanceMap: updatedAttendanceMap,
+          extraClasses: updatedExtraClasses
+        });
       };
 
       // Mark Cycle as Paid
@@ -1761,13 +1960,27 @@
           </header>
 
           <main style={{ maxWidth: '1440px', margin: '0 auto', padding: '1.75rem 1.5rem', width: '100%', flex: 1 }}>
-            {rescheduledClasses.length > 0 && (
-              <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: 'var(--radius-md)', padding: '0.75rem 1.25rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.85rem' }}>
-                  <i className="fas fa-info-circle" style={{ color: '#818CF8' }}></i>
-                  <span><strong>Rescheduled Notice:</strong> {rescheduledClasses[0].studentName} moved to <strong>{rescheduledClasses[0].rescheduledDate} ({rescheduledClasses[0].rescheduledTime})</strong></span>
+            {(rescheduledClasses || []).filter(r => r.status !== 'completed').length > 0 && (
+              <div style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: 'var(--radius-md)', padding: '0.75rem 1.25rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
+                  <i className="fas fa-calendar-alt" style={{ color: '#818CF8' }}></i>
+                  <span>
+                    <strong>Rescheduled Notice:</strong> {(rescheduledClasses || []).filter(r => r.status !== 'completed').map(r => `${r.studentName}: moved from ${formatDateMDY(r.originalDate)} to ${formatDateMDY(r.rescheduledDate)} (${r.rescheduledTime})`).join(' • ')}
+                  </span>
                 </div>
-                <button onClick={() => setRescheduledClasses([])} style={{ background: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', textDecoration: 'underline' }}>Dismiss</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('Clear active reschedule notices?')) {
+                      const cleared = (rescheduledClasses || []).map(r => ({ ...r, status: 'completed' }));
+                      setRescheduledClasses(cleared);
+                      syncWithCloud({ rescheduledClasses: cleared });
+                    }
+                  }}
+                  style={{ background: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', textDecoration: 'underline', border: 'none', cursor: 'pointer' }}
+                >
+                  Dismiss
+                </button>
               </div>
             )}
 
@@ -1780,7 +1993,9 @@
                 onMarkAttendance={handleAttendanceClick}
                 teacherName={currentTeacher.name}
                 rescheduledClasses={rescheduledClasses}
+                extraClasses={extraClasses}
                 onAddStudent={() => { setEditingStudent(null); setIsAddStudentOpen(true); }}
+                onAddExtraClass={(std) => { setExtraClassTargetStudent(std); setIsExtraClassOpen(true); }}
                 onViewProfile={(std) => setProfileViewingStudent(std)}
               />
             )}
@@ -1789,6 +2004,7 @@
               <StudentsDirectoryView
                 students={currentTeacherStudents}
                 onAddStudent={() => { setEditingStudent(null); setIsAddStudentOpen(true); }}
+                onAddExtraClass={(std) => { setExtraClassTargetStudent(std); setIsExtraClassOpen(true); }}
                 onEditStudent={(std) => { setEditingStudent(std); setIsAddStudentOpen(true); }}
                 onDeleteStudent={(stdId) => {
                   const s = students.find(x => x.id === stdId);
@@ -1897,7 +2113,8 @@
           {isExtraClassOpen && (
             <ExtraClassModal
               students={currentTeacherStudents}
-              onClose={() => setIsExtraClassOpen(false)}
+              targetStudent={extraClassTargetStudent}
+              onClose={() => { setIsExtraClassOpen(false); setExtraClassTargetStudent(null); }}
               onSave={handleSaveExtraClass}
             />
           )}
@@ -1982,7 +2199,9 @@
       onMarkAttendance,
       teacherName,
       rescheduledClasses = [],
+      extraClasses = [],
       onAddStudent,
+      onAddExtraClass,
       onViewProfile
     }) {
       const [filterMode, setFilterMode] = useState('scheduled'); // 'scheduled' | 'all'
@@ -2014,18 +2233,31 @@
         onDateChange(getLocalDateString());
       };
 
-      // Filter: Show students scheduled on selected day
+      // Filter: Show students scheduled on selected day (excludes classes rescheduled AWAY from selectedDate)
       const scheduledStudents = useMemo(() => {
         const dayLower = (selectedDayInfo.dayName || '').toLowerCase().trim();
         return students.filter(s => {
           const sDay = (s.weeklyDay || '').toLowerCase().trim();
           const sDays = (s.classDays || '').toLowerCase();
-          const isRegular = sDay === dayLower || sDays.includes(dayLower);
-          const isRescheduled = rescheduledClasses.some(r => r.studentId === s.id && r.rescheduledDate === selectedDate);
-          const isAlreadyMarked = !!dayRecords[s.id];
-          return isRegular || isRescheduled || isAlreadyMarked;
+
+          // Check if this student's class was rescheduled AWAY from selectedDate
+          const isRescheduledAway = (rescheduledClasses || []).some(
+            r => r.studentId === s.id && r.originalDate === selectedDate && r.status !== 'completed'
+          );
+
+          // Check if this student's class was rescheduled TO selectedDate
+          const isRescheduledHere = (rescheduledClasses || []).some(
+            r => r.studentId === s.id && r.rescheduledDate === selectedDate && r.status !== 'completed'
+          );
+
+          // Regular scheduled day UNLESS the session today was moved to another date!
+          const isRegular = (sDay === dayLower || sDays.includes(dayLower)) && !isRescheduledAway;
+          const isExtra = (extraClasses || []).some(e => e.studentId === s.id && e.date === selectedDate);
+          const isAlreadyMarked = !isRescheduledAway && !!dayRecords[s.id];
+
+          return isRegular || isRescheduledHere || isExtra || isAlreadyMarked;
         });
-      }, [students, selectedDayInfo.dayName, selectedDate, rescheduledClasses, dayRecords]);
+      }, [students, selectedDayInfo.dayName, selectedDate, rescheduledClasses, extraClasses, dayRecords]);
 
       const displayedStudents = filterMode === 'scheduled' ? scheduledStudents : students;
 
@@ -2301,15 +2533,48 @@
                             <span className={`badge badge-${student.feeStatus || 'paid'}`}>
                               {(student.feeStatus || 'paid').toUpperCase()}
                             </span>
-                            {isScheduledOnThisDay ? (
-                              <span className="badge" style={{ background: 'rgba(99, 102, 241, 0.2)', color: '#818CF8' }}>
-                                <i className="fas fa-calendar-check"></i> Today's Regular
-                              </span>
-                            ) : (
-                              <span className="badge" style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)' }}>
-                                Regular: {student.weeklyDay || 'Thursday'}
-                              </span>
-                            )}
+                            {(() => {
+                              const reschedAway = (rescheduledClasses || []).find(
+                                r => r.studentId === student.id && r.originalDate === selectedDate && r.status !== 'completed'
+                              );
+                              if (reschedAway) {
+                                return (
+                                  <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.35)' }}>
+                                    <i className="fas fa-calendar-times"></i> Rescheduled to {formatDateMDY(reschedAway.rescheduledDate)} at {reschedAway.rescheduledTime}
+                                  </span>
+                                );
+                              }
+                              const reschedHere = (rescheduledClasses || []).find(
+                                r => r.studentId === student.id && r.rescheduledDate === selectedDate && r.status !== 'completed'
+                              );
+                              if (reschedHere) {
+                                return (
+                                  <span className="badge" style={{ background: 'rgba(99, 102, 241, 0.2)', color: '#818CF8', border: '1px solid rgba(99, 102, 241, 0.4)' }}>
+                                    <i className="fas fa-calendar-check"></i> Rescheduled Session: Today at {reschedHere.rescheduledTime}
+                                  </span>
+                                );
+                              }
+                              const isExtraOnThisDay = (extraClasses || []).some(e => e.studentId === student.id && e.date === selectedDate) || record?.isExtraClass;
+                              if (isExtraOnThisDay) {
+                                return (
+                                  <span className="badge" style={{ background: 'rgba(52, 211, 153, 0.2)', color: '#34D399', border: '1px solid rgba(52, 211, 153, 0.4)' }}>
+                                    <i className="fas fa-star"></i> Extra Class
+                                  </span>
+                                );
+                              }
+                              if (isScheduledOnThisDay) {
+                                return (
+                                  <span className="badge" style={{ background: 'rgba(99, 102, 241, 0.2)', color: '#818CF8' }}>
+                                    <i className="fas fa-calendar-check"></i> Today's Regular
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="badge" style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)' }}>
+                                  Regular: {student.weeklyDay || 'Thursday'}
+                                </span>
+                              );
+                            })()}
                             <span className="badge badge-next" title="Next scheduled class date">
                               <i className="fas fa-calendar-alt"></i> Next: {formatReadableDate(nextDate)}
                             </span>
@@ -2343,7 +2608,29 @@
                         </div>
                       </div>
 
-                      {/* Attendance Buttons: Present, Absent, Leave */}
+                      {/* Attendance Buttons: Present, Absent, Leave (or Rescheduled Away notice) */}
+                      {(() => {
+                        const reschedAway = (rescheduledClasses || []).find(
+                          r => r.studentId === student.id && r.originalDate === selectedDate && r.status !== 'completed'
+                        );
+                        if (reschedAway) {
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                              <span style={{ fontSize: '0.85rem', color: '#F87171', fontWeight: 700 }}>
+                                <i className="fas fa-arrow-right"></i> Moved to {formatDateMDY(reschedAway.rescheduledDate)} ({reschedAway.rescheduledTime})
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => onDateChange(reschedAway.rescheduledDate)}
+                                className="btn-secondary"
+                                style={{ fontSize: '0.78rem', padding: '0.4rem 0.75rem', color: '#818CF8' }}
+                              >
+                                Go to {formatDateMDY(reschedAway.rescheduledDate)}
+                              </button>
+                            </div>
+                          );
+                        }
+                        return (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                         <button
                           type="button"
@@ -2402,6 +2689,8 @@
                           <i className="fas fa-pause"></i> Leave (No Deduction)
                         </button>
                       </div>
+                        );
+                      })()}
                     </div>
                   );
                 })
@@ -2412,7 +2701,7 @@
       );
     }
 
-    function StudentsDirectoryView({ students, onAddStudent, onEditStudent, onDeleteStudent, onViewProfile }) {
+    function StudentsDirectoryView({ students, onAddStudent, onAddExtraClass, onEditStudent, onDeleteStudent, onViewProfile }) {
       const [q, setQ] = useState('');
       const filtered = students.filter(s => s.name.toLowerCase().includes(q.toLowerCase()));
 
@@ -2507,10 +2796,15 @@
                     </div>
                   </div>
 
-                  <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '1rem', display: 'flex', justifyContent: 'space-between' }}>
-                    <button onClick={() => onViewProfile(student)} className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
-                      Profile
-                    </button>
+                  <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                      <button onClick={() => onViewProfile(student)} className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
+                        Profile
+                      </button>
+                      <button onClick={() => onAddExtraClass && onAddExtraClass(student)} className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', color: '#34D399', borderColor: 'rgba(52, 211, 153, 0.4)' }} title="Add an extra class session for this student">
+                        <i className="fas fa-plus"></i> Extra Class
+                      </button>
+                    </div>
                     <div style={{ display: 'flex', gap: '0.4rem' }}>
                       <button onClick={() => onEditStudent(student)} className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}>
                         Edit Details
@@ -3556,32 +3850,83 @@
       );
     }
 
-    // Modal: Reschedule
+    // Modal: Reschedule (Auto-fills original date/timing, moves class completely from previous date to new date)
     function RescheduleModal({ students, onClose, onSave }) {
       const [studentId, setStudentId] = useState(students[0]?.id || '');
-      const [originalDate, setOriginalDate] = useState(getLocalDateString());
-      const [originalTime, setOriginalTime] = useState('04:00 PM IST');
-      const [rescheduledDate, setRescheduledDate] = useState(getLocalDateString(new Date(Date.now() + 86400000)));
+
+      const getInitialOrigDate = (id) => {
+        const s = students.find(x => x.id === id) || students[0];
+        return s?.nextClassDate || calculateNextClassDate(s?.weeklyDay || 'Thursday') || getLocalDateString();
+      };
+      const getInitialOrigTime = (id) => {
+        const s = students.find(x => x.id === id) || students[0];
+        return s?.classTimings || '04:00 PM IST';
+      };
+
+      const [originalDate, setOriginalDate] = useState(() => getInitialOrigDate(students[0]?.id));
+      const [originalTime, setOriginalTime] = useState(() => getInitialOrigTime(students[0]?.id));
+      const [rescheduledDate, setRescheduledDate] = useState(() => getLocalDateString(new Date(Date.now() + 86400000)));
       const [rescheduledTime, setRescheduledTime] = useState('02:00 PM IST');
       const [reason, setReason] = useState('Student requested reschedule');
+
+      const selectedStudent = students.find(s => s.id === studentId);
+
+      const handleStudentChange = (newId) => {
+        setStudentId(newId);
+        const s = students.find(x => x.id === newId);
+        if (s) {
+          const sDate = s.nextClassDate || calculateNextClassDate(s.weeklyDay || 'Thursday') || getLocalDateString();
+          setOriginalDate(sDate);
+          setOriginalTime(s.classTimings || '04:00 PM IST');
+        }
+      };
 
       return (
         <div className="modal-backdrop" onClick={onClose}>
           <div className="modal-card" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Reschedule Class</h3>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <i className="fas fa-calendar-alt" style={{ color: '#818CF8' }}></i> Reschedule Class
+              </h3>
               <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
             </div>
             <form onSubmit={e => { e.preventDefault(); onSave({ studentId, originalDate, originalTime, rescheduledDate, rescheduledTime, reason }); }}>
               <div className="modal-body form-grid">
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label className="form-label">Student *</label>
-                  <select value={studentId} onChange={e => setStudentId(e.target.value)}>
-                    {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  <label className="form-label">Select Student *</label>
+                  <select value={studentId} onChange={e => handleStudentChange(e.target.value)} style={{ fontSize: '1rem', fontWeight: 700 }}>
+                    {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.weeklyDay ? `Every ${s.weeklyDay}` : 'Lesson'})</option>)}
                   </select>
                 </div>
+
+                {selectedStudent && (
+                  <div style={{
+                    gridColumn: '1 / -1',
+                    background: 'rgba(99, 102, 241, 0.1)',
+                    border: '1.5px solid rgba(99, 102, 241, 0.3)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '0.85rem 1rem',
+                    fontSize: '0.85rem',
+                    lineHeight: 1.6
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#A5B4FC', fontWeight: 800 }}>Student: {selectedStudent.name}</span>
+                      <span className={`badge badge-${selectedStudent.feeStatus || 'paid'}`}>{(selectedStudent.feeStatus || 'paid').toUpperCase()}</span>
+                    </div>
+                    <div style={{ color: '#CBD5E1', marginTop: '0.25rem' }}>
+                      Regular Schedule: <strong>Every {selectedStudent.weeklyDay || 'Thursday'} at {selectedStudent.classTimings || '4:00 PM'}</strong>
+                    </div>
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '0.5rem', paddingTop: '0.5rem', color: '#F87171', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <i className="fas fa-calendar-times"></i>
+                      <span>
+                        Will move session away from <strong>{formatDateMDY(originalDate)}</strong> to <strong>{formatDateMDY(rescheduledDate)}</strong> at <strong>{rescheduledTime}</strong>.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="form-group">
-                  <label className="form-label">Original Date *</label>
+                  <label className="form-label">Original Date (To Reschedule From) *</label>
                   <input type="date" required value={originalDate} onChange={e => setOriginalDate(e.target.value)} />
                 </div>
                 <div className="form-group">
@@ -3596,14 +3941,63 @@
                   <label className="form-label">New Rescheduled Time *</label>
                   <input type="text" required value={rescheduledTime} onChange={e => setRescheduledTime(e.target.value)} />
                 </div>
+
+                {/* Quick New Time Presets */}
+                <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '-0.35rem' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Quick times:</span>
+                  {['11:00 AM IST', '02:00 PM IST', '04:00 PM IST', '06:00 PM IST', '07:30 PM IST'].map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setRescheduledTime(t)}
+                      style={{
+                        background: rescheduledTime === t ? 'var(--primary)' : 'rgba(255,255,255,0.06)',
+                        color: rescheduledTime === t ? 'white' : 'var(--text-muted)',
+                        border: '1px solid ' + (rescheduledTime === t ? 'var(--primary)' : 'rgba(255,255,255,0.1)'),
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '0.2rem 0.5rem',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label className="form-label">Reason</label>
-                  <input type="text" value={reason} onChange={e => setReason(e.target.value)} />
+                  <label className="form-label">Reason for Rescheduling</label>
+                  <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Student requested, Exam conflict, Teacher unwell" />
+                </div>
+
+                {/* Quick Reason Presets */}
+                <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '-0.35rem' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Quick reasons:</span>
+                  {['Student requested', 'Exam conflict', 'Student unwell', 'Teacher rescheduled', 'Family emergency'].map(r => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setReason(r)}
+                      style={{
+                        background: reason === r ? 'var(--primary)' : 'rgba(255,255,255,0.06)',
+                        color: reason === r ? 'white' : 'var(--text-muted)',
+                        border: '1px solid ' + (reason === r ? 'var(--primary)' : 'rgba(255,255,255,0.1)'),
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '0.2rem 0.5rem',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {r}
+                    </button>
+                  ))}
                 </div>
               </div>
               <div className="modal-footer">
                 <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-                <button type="submit" className="btn-primary">Confirm Reschedule</button>
+                <button type="submit" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <i className="fas fa-check"></i> Confirm Reschedule
+                </button>
               </div>
             </form>
           </div>
@@ -3611,44 +4005,145 @@
       );
     }
 
-    // Modal: Extra Class
-    function ExtraClassModal({ students, onClose, onSave }) {
-      const [studentId, setStudentId] = useState(students[0]?.id || '');
+    // Modal: Extra Class (Counts in Cycle, Updates Completed Classes, Logs in Attendance & Sessions)
+    function ExtraClassModal({ students, targetStudent, onClose, onSave }) {
+      const [studentId, setStudentId] = useState(targetStudent?.id || students[0]?.id || '');
       const [date, setDate] = useState(getLocalDateString());
       const [time, setTime] = useState('06:00 PM IST');
       const [remarks, setRemarks] = useState('Extra class session (counted)');
 
+      const selectedStudent = students.find(s => s.id === studentId);
+      const currentCompleted = selectedStudent ? getStudentCompletedClassesCount(selectedStudent) : 0;
+      const limit = selectedStudent ? (selectedStudent.packageLimit || 4) : 4;
+      const activeCycle = selectedStudent?.packageHistory?.slice(-1)[0];
+      const cycleNum = activeCycle ? activeCycle.cycleId : 1;
+
       return (
         <div className="modal-backdrop" onClick={onClose}>
-          <div className="modal-card" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal-card" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Schedule Extra Class</h3>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <i className="fas fa-plus-circle" style={{ color: '#10B981' }}></i> + Add Extra Class
+              </h3>
               <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><i className="fas fa-times"></i></button>
             </div>
             <form onSubmit={e => { e.preventDefault(); onSave({ studentId, date, time, remarks }); }}>
               <div className="modal-body form-grid">
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label className="form-label">Student *</label>
-                  <select value={studentId} onChange={e => setStudentId(e.target.value)}>
-                    {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  <label className="form-label">Select Student *</label>
+                  <select
+                    value={studentId}
+                    onChange={e => setStudentId(e.target.value)}
+                    style={{ fontSize: '1rem', fontWeight: 700 }}
+                  >
+                    {students.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({getStudentCompletedClassesCount(s)}/{s.packageLimit || 4} classes completed)
+                      </option>
+                    ))}
                   </select>
                 </div>
+
+                {selectedStudent && (
+                  <div style={{
+                    gridColumn: '1 / -1',
+                    background: 'rgba(99, 102, 241, 0.1)',
+                    border: '1.5px solid rgba(99, 102, 241, 0.3)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '0.85rem 1rem',
+                    fontSize: '0.85rem',
+                    lineHeight: 1.6
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#A5B4FC', fontWeight: 800 }}>Student: {selectedStudent.name}</span>
+                      <span className={`badge badge-${selectedStudent.feeStatus || 'paid'}`}>{(selectedStudent.feeStatus || 'paid').toUpperCase()}</span>
+                    </div>
+                    <div style={{ color: '#CBD5E1', marginTop: '0.25rem' }}>
+                      Package: <strong>{formatPackageDisplay(selectedStudent.packageType, selectedStudent.packageLimit, selectedStudent.packageAmount)}</strong>
+                    </div>
+                    <div style={{ color: 'var(--text-muted)' }}>
+                      Regular Schedule: <strong>Every {selectedStudent.weeklyDay || 'Thursday'} at {selectedStudent.classTimings || '4:00 PM'}</strong>
+                    </div>
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '0.5rem', paddingTop: '0.5rem', color: '#34D399', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <i className="fas fa-check-circle"></i>
+                      <span>
+                        Will record class on <strong>{formatDateMDY(date)}</strong> into Cycle #{cycleNum} and advance progress to <strong>{currentCompleted + 1} classes completed</strong>.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="form-group">
                   <label className="form-label">Date (IST) *</label>
                   <input type="date" required value={date} onChange={e => setDate(e.target.value)} />
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">Time (45 Mins IST) *</label>
                   <input type="text" required value={time} onChange={e => setTime(e.target.value)} />
                 </div>
+
+                {/* Quick Time Presets */}
+                <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '-0.35rem' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Quick times:</span>
+                  {['11:00 AM IST', '02:00 PM IST', '04:00 PM IST', '06:00 PM IST', '07:30 PM IST'].map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setTime(t)}
+                      style={{
+                        background: time === t ? 'var(--primary)' : 'rgba(255,255,255,0.06)',
+                        color: time === t ? 'white' : 'var(--text-muted)',
+                        border: '1px solid ' + (time === t ? 'var(--primary)' : 'rgba(255,255,255,0.1)'),
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '0.2rem 0.5rem',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label className="form-label">Remarks</label>
-                  <input type="text" value={remarks} onChange={e => setRemarks(e.target.value)} />
+                  <label className="form-label">Remarks / Purpose</label>
+                  <input type="text" value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="e.g. Vocal Training, Exam Prep, Studio Recording" />
+                </div>
+
+                {/* Quick Remarks Presets */}
+                <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '-0.35rem' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Quick remarks:</span>
+                  {['Vocal Training', 'Music Production', 'Exam Prep', 'Doubt Clearing', 'Extra Studio Session'].map(r => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setRemarks(r)}
+                      style={{
+                        background: remarks === r ? 'var(--primary)' : 'rgba(255,255,255,0.06)',
+                        color: remarks === r ? 'white' : 'var(--text-muted)',
+                        border: '1px solid ' + (remarks === r ? 'var(--primary)' : 'rgba(255,255,255,0.1)'),
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '0.2rem 0.5rem',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {r}
+                    </button>
+                  ))}
                 </div>
               </div>
+
               <div className="modal-footer">
                 <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-                <button type="submit" className="btn-primary" style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}>Schedule Extra Class</button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                  <i className="fas fa-plus-circle"></i> Confirm & Add Extra Class
+                </button>
               </div>
             </form>
           </div>
